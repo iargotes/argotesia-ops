@@ -1,0 +1,57 @@
+services:
+  app:
+    build: .
+    environment:
+      APP_ENV: development
+      APP_PORT: 8000
+      DATABASE_URL: postgresql+psycopg://ai_ops_center:ai_ops_center@db:5432/ai_ops_center
+      WHATSAPP_ALLOWED_SENDERS: "${WHATSAPP_ALLOWED_SENDERS:-}"
+      LLM_PROVIDER: mock
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data:/data
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ai_ops_center
+      POSTGRES_USER: ai_ops_center
+      POSTGRES_PASSWORD: ai_ops_center
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_ops_center -d ai_ops_center"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  whatsapp:
+    build:
+      context: ./whatsapp-connector
+    profiles:
+      - whatsapp
+    environment:
+      PORT: 3000
+      WHATSAPP_CONNECTOR_PORT: 3000
+      WHATSAPP_BACKEND_WEBHOOK_URL: "${WHATSAPP_BACKEND_WEBHOOK_URL:-http://app:8000/webhooks/whatsapp}"
+      WHATSAPP_CLIENT_ID: "${WHATSAPP_CLIENT_ID:-mcp-whatsapp-ai-ops-center}"
+      WHATSAPP_ALLOWED_SENDERS: "${WHATSAPP_ALLOWED_SENDERS:-}"
+      WHATSAPP_WEBHOOK_SECRET: "${WHATSAPP_WEBHOOK_SECRET:-}"
+    ports:
+      - "3000:3000"
+    depends_on:
+      app:
+        condition: service_started
+    volumes:
+      - whatsapp_auth:/usr/src/app/.wwebjs_auth
+      - whatsapp_cache:/usr/src/app/.wwebjs_cache
+
+volumes:
+  postgres_data:
+  whatsapp_auth:
+  whatsapp_cache:

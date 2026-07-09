@@ -21,6 +21,12 @@ php -S 127.0.0.1:8090 -t public public/router.php
 
 Contrato para WhatsApp/transcripcion y salida hacia cliente: [`docs/api-contract.md`](docs/api-contract.md).
 
+## Integracion WhatsApp AI
+
+El backend FastAPI y el conector independiente de WhatsApp estan aislados en
+[`integrations/ai-native-whatsapp`](integrations/ai-native-whatsapp/README.md).
+Esta carpeta no reemplaza la aplicacion PHP ni su base de datos.
+
 ## Worker local
 
 ```bash

@@ -1,0 +1,21 @@
+{
+  "name": "ai-ops-whatsapp-connector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WhatsApp connector for AI Ops Center.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "start:local": "PUPPETEER_SKIP_DOWNLOAD=1 PUPPETEER_EXECUTABLE_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' node src/server.js",
+    "start:visible": "WHATSAPP_HEADLESS=false PUPPETEER_SKIP_DOWNLOAD=1 PUPPETEER_EXECUTABLE_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' node src/server.js",
+    "check": "node --check src/server.js && node --check src/whatsapp.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "0.12.0",
+    "whatsapp-web.js": "github:pedroslopez/whatsapp-web.js"
+  }
+}

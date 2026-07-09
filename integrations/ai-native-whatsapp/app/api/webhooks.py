@@ -1,0 +1,42 @@
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.core.schemas import WebhookResponse
+from app.core.security import verify_whatsapp_secret
+from app.services.telegram_notify import TelegramNotificationService
+from app.services.whatsapp_ingestion import IgnoredWhatsAppMessage, WhatsAppIngestionService
+
+router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+
+
+@router.post(
+    "/whatsapp",
+    response_model=WebhookResponse,
+    dependencies=[Depends(verify_whatsapp_secret)],
+)
+async def whatsapp_webhook(payload: dict[str, Any], db: Session = Depends(get_db)) -> WebhookResponse:
+    service = WhatsAppIngestionService(db)
+    try:
+        normalized, _db_message, classification, incident = service.process(payload)
+    except IgnoredWhatsAppMessage as exc:
+        return WebhookResponse(
+            status="ignored",
+            message_id=exc.message.message_id,
+            reason=exc.reason,
+            reply_to_customer=None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    await TelegramNotificationService().notify_incident(normalized, incident, classification)
+
+    return WebhookResponse(
+        status="accepted",
+        message_id=normalized.message_id,
+        incident_id=incident.ticket_id,
+        classification=classification,
+        reply_to_customer=None,
+    )

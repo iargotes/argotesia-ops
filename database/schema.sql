@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS intake_items (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
+  UNIQUE KEY uk_intake_source_external_ref (source_channel, external_ref),
   KEY idx_intake_status (status),
   KEY idx_intake_project (project_id),
   KEY idx_intake_assigned_user (assigned_user_id),

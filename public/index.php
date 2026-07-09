@@ -289,6 +289,121 @@ function add_event(PDO $conn, int $ticketId, ?int $userId, string $eventType, st
     $stmt->execute([':ticket_id' => $ticketId, ':user_id' => $userId, ':event_type' => $eventType, ':body' => $body]);
 }
 
+function bearer_token(): string
+{
+    $headers = function_exists('getallheaders') ? getallheaders() : [];
+    $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    if (preg_match('/Bearer\s+(.+)/i', (string)$authHeader, $m)) {
+        return trim($m[1]);
+    }
+
+    return trim((string)($headers['X-Ops-Api-Key'] ?? $headers['x-ops-api-key'] ?? $_GET['token'] ?? ''));
+}
+
+function require_integration_token(): void
+{
+    $expected = trim((string)env('OPS_API_TOKEN', ''));
+    if ($expected === '') {
+        json_response(['ok' => false, 'error' => 'integration token not configured'], 503);
+    }
+
+    $received = bearer_token();
+    if ($received === '' || !hash_equals($expected, $received)) {
+        json_response(['ok' => false, 'error' => 'invalid integration token'], 403);
+    }
+}
+
+function json_input(): array
+{
+    $input = json_decode(file_get_contents('php://input') ?: '{}', true);
+    if (!is_array($input)) {
+        json_response(['ok' => false, 'error' => 'invalid json'], 400);
+    }
+    return $input;
+}
+
+function integration_creator_id(PDO $conn): int
+{
+    $workerKey = strtolower(trim((string)env('OPS_INTAKE_CREATED_BY', 'ivan')));
+    $stmt = $conn->prepare("SELECT id FROM users WHERE worker_key = :worker_key AND status = 'active' LIMIT 1");
+    $stmt->execute([':worker_key' => $workerKey]);
+    $id = (int)($stmt->fetchColumn() ?: 0);
+    if ($id > 0) {
+        return $id;
+    }
+
+    $fallback = (int)$conn->query("SELECT id FROM users WHERE role = 'admin' AND status = 'active' ORDER BY id ASC LIMIT 1")->fetchColumn();
+    if ($fallback <= 0) {
+        json_response(['ok' => false, 'error' => 'no active creator user configured'], 500);
+    }
+    return $fallback;
+}
+
+function project_id_from_key(PDO $conn, ?string $projectKey): ?int
+{
+    $projectKey = strtolower(trim((string)$projectKey));
+    if ($projectKey === '') {
+        return null;
+    }
+    $stmt = $conn->prepare("SELECT id FROM projects WHERE project_key = :project_key AND status = 'active' LIMIT 1");
+    $stmt->execute([':project_key' => $projectKey]);
+    $id = (int)($stmt->fetchColumn() ?: 0);
+    return $id > 0 ? $id : null;
+}
+
+function user_id_from_worker_key(PDO $conn, ?string $workerKey): ?int
+{
+    $workerKey = strtolower(trim((string)$workerKey));
+    if ($workerKey === '') {
+        return null;
+    }
+    $stmt = $conn->prepare("SELECT id FROM users WHERE worker_key = :worker_key AND status = 'active' LIMIT 1");
+    $stmt->execute([':worker_key' => $workerKey]);
+    $id = (int)($stmt->fetchColumn() ?: 0);
+    return $id > 0 ? $id : null;
+}
+
+function existing_intake_response(PDO $conn, string $sourceChannel, string $externalRef): ?array
+{
+    if ($externalRef === '') {
+        return null;
+    }
+
+    $stmt = $conn->prepare("
+      SELECT
+        i.id AS intake_id, i.status AS intake_status, i.detected_intent, i.urgency, i.confidence,
+        t.id AS ticket_id, t.code AS ticket_code, t.status AS ticket_status
+      FROM intake_items i
+      LEFT JOIN tickets t ON t.intake_id = i.id
+      WHERE i.source_channel = :source_channel
+        AND i.external_ref = :external_ref
+      LIMIT 1
+    ");
+    $stmt->execute([
+        ':source_channel' => $sourceChannel,
+        ':external_ref' => $externalRef,
+    ]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        return null;
+    }
+
+    return [
+        'ok' => true,
+        'duplicate' => true,
+        'intake_id' => (int)$row['intake_id'],
+        'intake_status' => $row['intake_status'],
+        'ticket_id' => $row['ticket_id'] !== null ? (int)$row['ticket_id'] : null,
+        'ticket_code' => $row['ticket_code'],
+        'ticket_status' => $row['ticket_status'],
+        'classification' => [
+            'intent' => $row['detected_intent'],
+            'urgency' => $row['urgency'],
+            'confidence' => (float)$row['confidence'],
+        ],
+    ];
+}
+
 function worker_from_request(PDO $conn): array
 {
     $headers = function_exists('getallheaders') ? getallheaders() : [];
@@ -384,6 +499,208 @@ if ($path === '/api/worker/proposals' && $method === 'POST') {
         $conn->rollBack();
         json_response(['ok' => false, 'error' => 'proposal save failed'], 500);
     }
+}
+
+if ($path === '/api/intake/messages' && $method === 'POST') {
+    require_integration_token();
+    $input = json_input();
+
+    $validChannels = ['whatsapp', 'audio', 'email', 'phone', 'manual', 'web', 'other'];
+    $sourceChannel = strtolower(trim((string)($input['source_channel'] ?? 'whatsapp')));
+    if (!in_array($sourceChannel, $validChannels, true)) {
+        json_response(['ok' => false, 'error' => 'invalid source_channel'], 422);
+    }
+
+    $externalRef = trim((string)($input['external_ref'] ?? ''));
+    $duplicate = existing_intake_response($conn, $sourceChannel, $externalRef);
+    if ($duplicate !== null) {
+        json_response($duplicate);
+    }
+
+    $transcript = trim((string)($input['transcript'] ?? ''));
+    if ($transcript === '') {
+        json_response(['ok' => false, 'error' => 'transcript required'], 422);
+    }
+
+    $title = trim((string)($input['title'] ?? ''));
+    if ($title === '') {
+        $title = mb_substr((string)preg_replace('/\s+/', ' ', $transcript), 0, 120);
+    }
+
+    $audio = is_array($input['audio'] ?? null) ? $input['audio'] : [];
+    $metadata = [
+        'received_at' => $input['received_at'] ?? null,
+        'audio' => $audio ?: null,
+        'sender' => $input['sender'] ?? null,
+        'raw_payload' => $input['raw_payload'] ?? null,
+    ];
+    $metadata = array_filter($metadata, static fn ($value): bool => $value !== null && $value !== []);
+    $rawNotes = trim((string)($input['raw_notes'] ?? ''));
+    if ($metadata) {
+        $rawNotes = trim($rawNotes . "\n\nMetadata:\n" . json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    $classification = Classifier::classify($conn, $title, $transcript);
+    $projectOverride = project_id_from_key($conn, $input['project_key'] ?? null);
+    if ($projectOverride !== null) {
+        $classification['project_id'] = $projectOverride;
+    }
+    $assignedOverride = user_id_from_worker_key($conn, $input['assigned_worker_key'] ?? null);
+    if ($assignedOverride !== null) {
+        $classification['assigned_user_id'] = $assignedOverride;
+    }
+
+    $createTicket = !array_key_exists('create_ticket', $input) || (bool)$input['create_ticket'];
+    $creatorId = integration_creator_id($conn);
+
+    $conn->beginTransaction();
+    try {
+        $stmt = $conn->prepare("
+          INSERT INTO intake_items
+            (source_channel, external_ref, client_name, client_contact, title, transcript, raw_notes,
+             project_id, assigned_user_id, detected_intent, urgency, confidence, status,
+             ai_summary, codex_prompt, client_reply_draft, created_by_user_id)
+          VALUES
+            (:source_channel, :external_ref, :client_name, :client_contact, :title, :transcript, :raw_notes,
+             :project_id, :assigned_user_id, :detected_intent, :urgency, :confidence, 'clasificado',
+             :ai_summary, :codex_prompt, :client_reply_draft, :created_by_user_id)
+        ");
+        $stmt->execute([
+            ':source_channel' => $sourceChannel,
+            ':external_ref' => $externalRef !== '' ? $externalRef : null,
+            ':client_name' => trim((string)($input['client_name'] ?? '')) ?: null,
+            ':client_contact' => trim((string)($input['client_contact'] ?? '')) ?: null,
+            ':title' => mb_substr($title, 0, 180),
+            ':transcript' => $transcript,
+            ':raw_notes' => $rawNotes !== '' ? $rawNotes : null,
+            ':project_id' => $classification['project_id'],
+            ':assigned_user_id' => $classification['assigned_user_id'],
+            ':detected_intent' => $classification['detected_intent'],
+            ':urgency' => $classification['urgency'],
+            ':confidence' => $classification['confidence'],
+            ':ai_summary' => $classification['ai_summary'],
+            ':codex_prompt' => $classification['codex_prompt'],
+            ':client_reply_draft' => $classification['client_reply_draft'],
+            ':created_by_user_id' => $creatorId,
+        ]);
+        $intakeId = (int)$conn->lastInsertId();
+
+        $ticketId = null;
+        $ticketCode = null;
+        $ticketStatus = null;
+        if ($createTicket) {
+            $ticketStatus = !empty($classification['assigned_user_id']) ? 'asignado' : 'nuevo';
+            $description = "Resumen IA:\n" . (string)$classification['ai_summary'] . "\n\nPrompt Codex:\n" . (string)$classification['codex_prompt'] . "\n\nTranscripcion:\n" . $transcript;
+            $stmt = $conn->prepare("
+              INSERT INTO tickets
+                (intake_id, project_id, assigned_user_id, title, description, client_name, client_contact,
+                 source_channel, intent, urgency, status, client_reply_draft, created_by_user_id)
+              VALUES
+                (:intake_id, :project_id, :assigned_user_id, :title, :description, :client_name, :client_contact,
+                 :source_channel, :intent, :urgency, :status, :client_reply_draft, :created_by)
+            ");
+            $stmt->execute([
+                ':intake_id' => $intakeId,
+                ':project_id' => $classification['project_id'],
+                ':assigned_user_id' => $classification['assigned_user_id'],
+                ':title' => mb_substr($title, 0, 180),
+                ':description' => $description,
+                ':client_name' => trim((string)($input['client_name'] ?? '')) ?: null,
+                ':client_contact' => trim((string)($input['client_contact'] ?? '')) ?: null,
+                ':source_channel' => $sourceChannel,
+                ':intent' => $classification['detected_intent'],
+                ':urgency' => $classification['urgency'],
+                ':status' => $ticketStatus,
+                ':client_reply_draft' => $classification['client_reply_draft'],
+                ':created_by' => $creatorId,
+            ]);
+            $ticketId = (int)$conn->lastInsertId();
+            $ticketCode = generate_ticket_code($conn, $ticketId);
+            add_event($conn, $ticketId, $creatorId, 'ticket_created', 'Ticket creado desde API de intake.');
+
+            $stmt = $conn->prepare("UPDATE intake_items SET status = 'ticket_creado' WHERE id = :id LIMIT 1");
+            $stmt->execute([':id' => $intakeId]);
+        }
+
+        $conn->commit();
+        json_response([
+            'ok' => true,
+            'duplicate' => false,
+            'intake_id' => $intakeId,
+            'intake_status' => $createTicket ? 'ticket_creado' : 'clasificado',
+            'ticket_id' => $ticketId,
+            'ticket_code' => $ticketCode,
+            'ticket_status' => $ticketStatus,
+            'classification' => [
+                'intent' => $classification['detected_intent'],
+                'urgency' => $classification['urgency'],
+                'confidence' => (float)$classification['confidence'],
+                'assigned_user_id' => $classification['assigned_user_id'],
+                'project_id' => $classification['project_id'],
+            ],
+            'client_reply_draft' => $classification['client_reply_draft'],
+        ], 201);
+    } catch (Throwable $e) {
+        $conn->rollBack();
+        $duplicate = existing_intake_response($conn, $sourceChannel, $externalRef);
+        if ($duplicate !== null) {
+            json_response($duplicate);
+        }
+        json_response(['ok' => false, 'error' => 'intake save failed'], 500);
+    }
+}
+
+if ($path === '/api/outbox/client-replies' && $method === 'GET') {
+    require_integration_token();
+    $status = trim((string)($_GET['status'] ?? 'aprobado'));
+    $allowed = ['aprobado', 'en_revision', 'resuelto'];
+    if (!in_array($status, $allowed, true)) {
+        json_response(['ok' => false, 'error' => 'invalid status'], 422);
+    }
+    $limit = max(1, min(100, (int)($_GET['limit'] ?? 50)));
+    $stmt = $conn->prepare("
+      SELECT
+        t.id, t.code, t.title, t.client_name, t.client_contact, t.source_channel,
+        t.status, t.client_reply_draft, t.updated_at, t.created_at,
+        i.external_ref AS intake_external_ref
+      FROM tickets t
+      LEFT JOIN intake_items i ON i.id = t.intake_id
+      WHERE t.status = :status
+        AND t.client_reply_draft IS NOT NULL
+        AND t.client_reply_draft <> ''
+      ORDER BY COALESCE(t.updated_at, t.created_at) ASC
+      LIMIT {$limit}
+    ");
+    $stmt->execute([':status' => $status]);
+    json_response(['ok' => true, 'status' => $status, 'items' => $stmt->fetchAll()]);
+}
+
+if ($path === '/api/outbox/client-replies/ack' && $method === 'POST') {
+    require_integration_token();
+    $input = json_input();
+    $ticketId = (int)($input['ticket_id'] ?? 0);
+    if ($ticketId <= 0) {
+        json_response(['ok' => false, 'error' => 'ticket_id required'], 422);
+    }
+
+    $stmt = $conn->prepare("SELECT id FROM tickets WHERE id = :id LIMIT 1");
+    $stmt->execute([':id' => $ticketId]);
+    if (!$stmt->fetch()) {
+        json_response(['ok' => false, 'error' => 'ticket not found'], 404);
+    }
+
+    $externalRef = trim((string)($input['external_ref'] ?? ''));
+    $sentText = trim((string)($input['sent_text'] ?? ''));
+    $body = 'Respuesta enviada por integracion.';
+    if ($externalRef !== '') {
+        $body .= ' Ref: ' . $externalRef . '.';
+    }
+    if ($sentText !== '') {
+        $body .= "\n\n" . $sentText;
+    }
+    add_event($conn, $ticketId, null, 'client_reply_sent', $body);
+
+    json_response(['ok' => true, 'ticket_id' => $ticketId]);
 }
 
 if ($path === '/login' && $method === 'GET') {

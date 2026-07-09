@@ -17,6 +17,10 @@ php -S 127.0.0.1:8090 -t public public/router.php
 - `ivan@argotes.com` / `123456`
 - `oscar@argotes.com` / `123456`
 
+## API de integraciones
+
+Contrato para WhatsApp/transcripcion y salida hacia cliente: [`docs/api-contract.md`](docs/api-contract.md).
+
 ## Worker local
 
 ```bash

@@ -37,9 +37,22 @@ function json_response(array $payload, int $status = 200): void
     exit;
 }
 
+function flash_set(string $type, string $message): void
+{
+    $_SESSION['flash'] = ['type' => $type, 'message' => $message];
+}
+
+function flash_pull(): ?array
+{
+    $flash = $_SESSION['flash'] ?? null;
+    unset($_SESSION['flash']);
+    return is_array($flash) ? $flash : null;
+}
+
 function layout(string $title, array $user, callable $body): void
 {
     $csrf = Security::csrfToken();
+    $flash = flash_pull();
     ?>
 <!doctype html>
 <html lang="es">
@@ -47,18 +60,38 @@ function layout(string $title, array $user, callable $body): void
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= h($title) ?> | ArgotesIA Ops</title>
+  <script>
+    (() => {
+      const saved = localStorage.getItem('ops-theme');
+      const theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.setAttribute('data-bs-theme', theme);
+    })();
+  </script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <style>
-    :root{--ink:#111827;--muted:#6b7280;--line:#d9dee8;--bg:#f6f8fb}
-    body{font-family:Verdana,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+    :root{--ink:oklch(24% .015 248);--muted:oklch(53% .025 250);--line:oklch(88% .018 250);--bg:oklch(97% .01 250);--surface:oklch(99% .006 250);--surface-2:oklch(94% .012 250);--field:oklch(99% .006 250);--accent:oklch(55% .16 252);--shadow:0 10px 24px oklch(24% .015 248 / .06)}
+    :root[data-theme="dark"]{--ink:oklch(91% .012 250);--muted:oklch(70% .02 250);--line:oklch(33% .02 250);--bg:oklch(18% .015 250);--surface:oklch(23% .018 250);--surface-2:oklch(28% .02 250);--field:oklch(20% .018 250);--accent:oklch(70% .13 252);--shadow:0 12px 28px oklch(12% .015 250 / .34)}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);transition:background-color .18s ease-out,color .18s ease-out}
     .wrap{max-width:1280px}
-    .panel{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 24px rgba(17,24,39,.05)}
-    .metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px}
+    .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow)}
+    .metric{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
     .metric strong{font-size:1.5rem}
-    .soft{border-radius:8px;border:1px solid var(--line);padding:.7rem .75rem}
+    .soft{border-radius:8px;border:1px solid var(--line);padding:.7rem .75rem;background:var(--field);color:var(--ink)}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.86rem;white-space:pre-wrap}
     .nav-pills .nav-link{border-radius:8px}
+    .nav-link{color:var(--muted)}
+    .nav-link:hover{color:var(--ink);background:var(--surface-2)}
+    .form-control,.form-select{background-color:var(--field);border-color:var(--line);color:var(--ink)}
+    .form-control:focus,.form-select:focus{border-color:var(--accent);box-shadow:0 0 0 .2rem oklch(55% .16 252 / .18)}
+    .form-control::placeholder{color:var(--muted)}
+    .table{--bs-table-bg:var(--surface);--bs-table-color:var(--ink);--bs-table-border-color:var(--line);--bs-table-hover-bg:var(--surface-2);--bs-table-hover-color:var(--ink)}
+    .table-light{--bs-table-bg:var(--surface-2);--bs-table-color:var(--muted);--bs-table-border-color:var(--line)}
+    .modal-content,.dropdown-menu{background:var(--surface);border-color:var(--line);color:var(--ink)}
+    .bg-light{background-color:var(--surface-2)!important}
+    .theme-toggle{border-color:var(--line);color:var(--muted)}
+    .theme-toggle:hover{background:var(--surface-2);color:var(--ink)}
     textarea.mono{min-height:180px}
   </style>
 </head>
@@ -71,12 +104,22 @@ function layout(string $title, array $user, callable $body): void
       <a class="nav-link" href="<?= h(url_for('/intake')) ?>"><i class="bi bi-whatsapp me-1"></i>Intake</a>
       <a class="nav-link" href="<?= h(url_for('/tickets')) ?>"><i class="bi bi-ticket-perforated me-1"></i>Tickets</a>
       <a class="nav-link" href="<?= h(url_for('/projects')) ?>"><i class="bi bi-folder2-open me-1"></i>Proyectos</a>
+      <?php if (($user['role'] ?? '') === 'admin'): ?>
+        <a class="nav-link" href="<?= h(url_for('/users')) ?>"><i class="bi bi-people me-1"></i>Usuarios</a>
+      <?php endif; ?>
     </nav>
     <div class="ms-auto small text-muted">
       <?= h((string)$user['name']) ?> · <?= h((string)$user['worker_key']) ?>
+      <button class="btn btn-outline-secondary btn-sm ms-2 theme-toggle" type="button" data-theme-toggle aria-label="Cambiar tema">
+        <i class="bi bi-moon-stars" data-theme-icon></i><span class="d-none d-sm-inline ms-1" data-theme-label>Tema</span>
+      </button>
+      <a class="btn btn-outline-secondary btn-sm ms-2" href="<?= h(url_for('/change-password')) ?>">Clave</a>
       <a class="btn btn-outline-danger btn-sm ms-2" href="<?= h(url_for('/logout')) ?>">Salir</a>
     </div>
   </header>
+  <?php if ($flash): ?>
+    <div class="alert alert-<?= ($flash['type'] ?? '') === 'success' ? 'success' : 'danger' ?>"><?= h((string)($flash['message'] ?? '')) ?></div>
+  <?php endif; ?>
   <?php $body($csrf); ?>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -91,6 +134,23 @@ document.querySelectorAll('[data-copy-target]').forEach((button) => {
     setTimeout(() => button.innerHTML = old, 1100);
   });
 });
+(() => {
+  const root = document.documentElement;
+  const button = document.querySelector('[data-theme-toggle]');
+  const icon = document.querySelector('[data-theme-icon]');
+  const label = document.querySelector('[data-theme-label]');
+  const applyTheme = (theme) => {
+    root.dataset.theme = theme;
+    root.setAttribute('data-bs-theme', theme);
+    localStorage.setItem('ops-theme', theme);
+    if (icon) icon.className = theme === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
+    if (label) label.textContent = theme === 'dark' ? 'Claro' : 'Oscuro';
+  };
+  applyTheme(root.dataset.theme || 'light');
+  if (button) {
+    button.addEventListener('click', () => applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
+  }
+})();
 </script>
 </body>
 </html>
@@ -100,6 +160,114 @@ document.querySelectorAll('[data-copy-target]').forEach((button) => {
 function users(PDO $conn): array
 {
     return $conn->query("SELECT id, name, worker_key FROM users WHERE status = 'active' ORDER BY id ASC")->fetchAll();
+}
+
+function admin_users(PDO $conn): array
+{
+    return $conn->query("
+      SELECT id, worker_key, username, name, email, role, status, must_change_password, created_at, updated_at
+      FROM users
+      ORDER BY status ASC, role ASC, name ASC
+    ")->fetchAll();
+}
+
+function user_roles(): array
+{
+    return ['admin' => 'Admin', 'operator' => 'Operador'];
+}
+
+function normalize_user_input(array $source): array
+{
+    $username = strtolower(trim((string)($source['username'] ?? '')));
+    $workerKey = strtolower(trim((string)($source['worker_key'] ?? '')));
+    if ($workerKey === '') {
+        $workerKey = $username;
+    }
+
+    return [
+        'id' => (int)($source['id'] ?? 0),
+        'name' => trim((string)($source['name'] ?? '')),
+        'username' => $username,
+        'worker_key' => $workerKey,
+        'email' => strtolower(trim((string)($source['email'] ?? ''))),
+        'role' => trim((string)($source['role'] ?? 'operator')),
+        'status' => trim((string)($source['status'] ?? 'active')),
+    ];
+}
+
+function validate_user_input(array $input): array
+{
+    $errors = [];
+    if ($input['name'] === '') {
+        $errors[] = 'El nombre es obligatorio.';
+    }
+    if (!preg_match('/^[a-z0-9._-]{3,80}$/', (string)$input['username'])) {
+        $errors[] = 'El usuario debe tener 3-80 caracteres: letras, numeros, punto, guion o guion bajo.';
+    }
+    if (!preg_match('/^[a-z0-9._-]{3,40}$/', (string)$input['worker_key'])) {
+        $errors[] = 'La clave de agente debe tener 3-40 caracteres: letras, numeros, punto, guion o guion bajo.';
+    }
+    if (!filter_var($input['email'], FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'El correo no tiene formato valido.';
+    }
+    if (!array_key_exists($input['role'], user_roles())) {
+        $errors[] = 'El rol seleccionado no es valido.';
+    }
+    if (!in_array($input['status'], ['active', 'paused'], true)) {
+        $errors[] = 'El estado seleccionado no es valido.';
+    }
+    return $errors;
+}
+
+function user_field_exists(PDO $conn, string $field, string $value, ?int $exceptId = null): bool
+{
+    if (!in_array($field, ['email', 'username', 'worker_key'], true)) {
+        throw new InvalidArgumentException('Campo de usuario invalido.');
+    }
+    $sql = "SELECT COUNT(*) FROM users WHERE {$field} = :value";
+    $params = [':value' => $value];
+    if ($exceptId !== null) {
+        $sql .= " AND id <> :id";
+        $params[':id'] = $exceptId;
+    }
+    $stmt = $conn->prepare($sql);
+    $stmt->execute($params);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
+function find_user(PDO $conn, int $id): ?array
+{
+    $stmt = $conn->prepare("SELECT * FROM users WHERE id = :id LIMIT 1");
+    $stmt->execute([':id' => $id]);
+    $user = $stmt->fetch();
+    return $user ?: null;
+}
+
+function count_active_admins(PDO $conn, ?int $exceptId = null): int
+{
+    $sql = "SELECT COUNT(*) FROM users WHERE role = 'admin' AND status = 'active'";
+    $params = [];
+    if ($exceptId !== null) {
+        $sql .= " AND id <> :id";
+        $params[':id'] = $exceptId;
+    }
+    $stmt = $conn->prepare($sql);
+    $stmt->execute($params);
+    return (int)$stmt->fetchColumn();
+}
+
+function require_admin_user(array $user): void
+{
+    if (($user['role'] ?? '') === 'admin') {
+        return;
+    }
+    http_response_code(403);
+    exit('Acceso restringido.');
+}
+
+function random_worker_token(): string
+{
+    return bin2hex(random_bytes(24));
 }
 
 function projects(PDO $conn): array
@@ -228,23 +396,57 @@ if ($path === '/login' && $method === 'GET') {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Login | ArgotesIA Ops</title>
+  <script>
+    (() => {
+      const saved = localStorage.getItem('ops-theme');
+      const theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.setAttribute('data-bs-theme', theme);
+    })();
+  </script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>body{background:#f6f8fb}.card{max-width:420px;margin:9vh auto;border-radius:10px}</style>
+  <style>
+    :root{--ink:oklch(24% .015 248);--muted:oklch(53% .025 250);--line:oklch(88% .018 250);--bg:oklch(97% .01 250);--surface:oklch(99% .006 250);--field:oklch(99% .006 250)}
+    :root[data-theme="dark"]{--ink:oklch(91% .012 250);--muted:oklch(70% .02 250);--line:oklch(33% .02 250);--bg:oklch(18% .015 250);--surface:oklch(23% .018 250);--field:oklch(20% .018 250)}
+    body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+    .card{max-width:420px;margin:9vh auto;border-radius:10px;background:var(--surface);border:1px solid var(--line)}
+    .text-muted{color:var(--muted)!important}
+    .form-control{background:var(--field);border-color:var(--line);color:var(--ink)}
+    .form-control::placeholder{color:var(--muted)}
+    .theme-toggle{position:fixed;right:18px;top:18px}
+  </style>
 </head>
 <body>
+  <button class="btn btn-outline-secondary btn-sm theme-toggle" type="button" data-theme-toggle>Oscuro</button>
   <div class="card shadow-sm border-0 p-4">
     <div class="h4 fw-bold mb-1">ArgotesIA Ops</div>
     <div class="text-muted mb-3">Operacion interna Ivan/Oscar</div>
     <?php if ($error !== ''): ?><div class="alert alert-danger"><?= h($error) ?></div><?php endif; ?>
     <form method="post" action="<?= h(url_for('/login')) ?>">
       <input type="hidden" name="_csrf" value="<?= h(Security::csrfToken()) ?>">
-      <label class="form-label">Email</label>
-      <input class="form-control mb-2" type="email" name="email" required value="ivan@argotes.com">
+      <label class="form-label">Usuario o correo</label>
+      <input class="form-control mb-2" type="text" name="login" required autocomplete="username" placeholder="ivan o ivan@argotes.com">
       <label class="form-label">Password</label>
-      <input class="form-control mb-3" type="password" name="password" required value="123456">
+      <input class="form-control mb-3" type="password" name="password" required autocomplete="current-password">
       <button class="btn btn-primary w-100" type="submit">Entrar</button>
     </form>
   </div>
+  <script>
+  (() => {
+    const root = document.documentElement;
+    const button = document.querySelector('[data-theme-toggle]');
+    const applyTheme = (theme) => {
+      root.dataset.theme = theme;
+      root.setAttribute('data-bs-theme', theme);
+      localStorage.setItem('ops-theme', theme);
+      if (button) button.textContent = theme === 'dark' ? 'Claro' : 'Oscuro';
+    };
+    applyTheme(root.dataset.theme || 'light');
+    if (button) {
+      button.addEventListener('click', () => applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
+    }
+  })();
+  </script>
 </body>
 </html>
 <?php
@@ -253,8 +455,8 @@ if ($path === '/login' && $method === 'GET') {
 
 if ($path === '/login' && $method === 'POST') {
     Security::requireCsrf();
-    if ($auth->attempt((string)($_POST['email'] ?? ''), (string)($_POST['password'] ?? ''))) {
-        redirect((string)($_GET['return'] ?? '/'));
+    if ($auth->attempt((string)($_POST['login'] ?? $_POST['email'] ?? ''), (string)($_POST['password'] ?? ''))) {
+        redirect((string)($_GET['return'] ?? url_for('/')));
     }
     redirect(url_for('/login') . '&error=' . urlencode('Credenciales invalidas.'));
 }
@@ -265,6 +467,385 @@ if ($path === '/logout') {
 }
 
 $user = $auth->requireAuth();
+
+if ($path === '/change-password' && $method === 'GET') {
+    layout('Cambiar clave', $user, function (string $csrf) {
+        ?>
+  <div class="row justify-content-center">
+    <div class="col-12 col-lg-5">
+      <div class="panel p-4">
+        <div class="h5 fw-bold mb-1">Cambiar clave</div>
+        <div class="text-muted mb-3">Actualiza tu acceso local a ArgotesIA Ops.</div>
+        <form method="post" action="<?= h(url_for('/change-password')) ?>">
+          <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+          <label class="form-label">Clave actual</label>
+          <input class="form-control soft mb-3" type="password" name="current_password" autocomplete="current-password" required>
+          <label class="form-label">Nueva clave</label>
+          <input class="form-control soft mb-3 js-password-main" type="password" name="new_password" minlength="8" autocomplete="new-password" required>
+          <label class="form-label">Confirmar nueva clave</label>
+          <input class="form-control soft mb-3 js-password-confirm" type="password" name="new_password_confirm" minlength="8" autocomplete="new-password" required>
+          <div class="d-flex justify-content-end gap-2">
+            <a class="btn btn-light" href="<?= h(url_for('/')) ?>">Cancelar</a>
+            <button class="btn btn-primary" type="submit">Guardar clave</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <script>
+  document.querySelectorAll('form').forEach((form) => {
+    const password = form.querySelector('.js-password-main');
+    const confirm = form.querySelector('.js-password-confirm');
+    if (!password || !confirm) return;
+    const validate = () => confirm.setCustomValidity(password.value === confirm.value ? '' : 'Las claves no coinciden.');
+    password.addEventListener('input', validate);
+    confirm.addEventListener('input', validate);
+    form.addEventListener('submit', validate);
+  });
+  </script>
+<?php
+    });
+    exit;
+}
+
+if ($path === '/change-password' && $method === 'POST') {
+    Security::requireCsrf();
+    $currentPassword = trim((string)($_POST['current_password'] ?? ''));
+    $newPassword = trim((string)($_POST['new_password'] ?? ''));
+    $newPasswordConfirm = trim((string)($_POST['new_password_confirm'] ?? ''));
+
+    $stmt = $conn->prepare("SELECT password_hash FROM users WHERE id = :id AND status = 'active' LIMIT 1");
+    $stmt->execute([':id' => (int)$user['id']]);
+    $currentUser = $stmt->fetch();
+    if (!$currentUser || !password_verify($currentPassword, (string)$currentUser['password_hash'])) {
+        flash_set('error', 'La clave actual no es correcta.');
+        redirect(url_for('/change-password'));
+    }
+    if (strlen($newPassword) < 8) {
+        flash_set('error', 'La nueva clave debe tener al menos 8 caracteres.');
+        redirect(url_for('/change-password'));
+    }
+    if ($newPassword !== $newPasswordConfirm) {
+        flash_set('error', 'La confirmacion de clave no coincide.');
+        redirect(url_for('/change-password'));
+    }
+
+    $stmt = $conn->prepare("UPDATE users SET password_hash = :hash, must_change_password = 0 WHERE id = :id LIMIT 1");
+    $stmt->execute([
+        ':hash' => password_hash($newPassword, PASSWORD_DEFAULT),
+        ':id' => (int)$user['id'],
+    ]);
+    flash_set('success', 'Clave actualizada correctamente.');
+    redirect(url_for('/'));
+}
+
+if ($path === '/users' && $method === 'GET') {
+    require_admin_user($user);
+    $items = admin_users($conn);
+    $stats = [
+        'total' => count($items),
+        'active' => count(array_filter($items, static fn (array $item): bool => $item['status'] === 'active')),
+        'admins' => count(array_filter($items, static fn (array $item): bool => $item['role'] === 'admin' && $item['status'] === 'active')),
+    ];
+    $roles = user_roles();
+    layout('Usuarios', $user, function (string $csrf) use ($items, $stats, $roles) {
+        ?>
+  <div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3">
+    <div>
+      <div class="h4 fw-bold mb-1">Usuarios internos</div>
+      <div class="text-muted">Accesos para Ivan/Oscar y operadores del motor.</div>
+    </div>
+    <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#createUserModal">
+      <i class="bi bi-person-plus me-1"></i>Nuevo usuario
+    </button>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-4"><div class="metric"><strong><?= (int)$stats['total'] ?></strong><div class="text-muted small">Total</div></div></div>
+    <div class="col-4"><div class="metric"><strong><?= (int)$stats['active'] ?></strong><div class="text-muted small">Activos</div></div></div>
+    <div class="col-4"><div class="metric"><strong><?= (int)$stats['admins'] ?></strong><div class="text-muted small">Admins</div></div></div>
+  </div>
+
+  <div class="panel p-0 overflow-hidden">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr><th class="ps-3">Persona</th><th>Acceso</th><th>Agente local</th><th>Estado</th><th class="text-end pe-3">Acciones</th></tr>
+        </thead>
+        <tbody>
+        <?php foreach ($items as $item): ?>
+          <tr>
+            <td class="ps-3">
+              <div class="fw-semibold"><?= h((string)$item['name']) ?></div>
+              <div class="small text-muted"><?= h((string)$item['email']) ?></div>
+              <div class="small mono"><?= h((string)$item['username']) ?></div>
+            </td>
+            <td><span class="badge text-bg-<?= $item['role'] === 'admin' ? 'primary' : 'secondary' ?>"><?= h($roles[$item['role']] ?? (string)$item['role']) ?></span></td>
+            <td>
+              <span class="mono"><?= h((string)$item['worker_key']) ?></span>
+              <?php if ((int)$item['must_change_password'] === 1): ?><div class="small text-warning">Clave temporal</div><?php endif; ?>
+            </td>
+            <td><span class="badge text-bg-<?= $item['status'] === 'active' ? 'success' : 'light text-secondary border' ?>"><?= h((string)$item['status']) ?></span></td>
+            <td class="text-end pe-3">
+              <button
+                class="btn btn-sm btn-outline-primary js-edit-user"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#editUserModal"
+                data-id="<?= (int)$item['id'] ?>"
+                data-name="<?= h((string)$item['name']) ?>"
+                data-username="<?= h((string)$item['username']) ?>"
+                data-worker-key="<?= h((string)$item['worker_key']) ?>"
+                data-email="<?= h((string)$item['email']) ?>"
+                data-role="<?= h((string)$item['role']) ?>"
+                data-status="<?= h((string)$item['status']) ?>"
+              ><i class="bi bi-pencil-square"></i></button>
+              <button
+                class="btn btn-sm btn-outline-secondary js-reset-user"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#resetPasswordModal"
+                data-id="<?= (int)$item['id'] ?>"
+                data-name="<?= h((string)$item['name']) ?>"
+              ><i class="bi bi-key"></i></button>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (!$items): ?><tr><td colspan="5" class="text-muted p-4">Sin usuarios registrados.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="modal fade" id="createUserModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form class="modal-content" method="post" action="<?= h(url_for('/users/create')) ?>">
+        <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+        <div class="modal-header"><h5 class="modal-title">Nuevo usuario</h5><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+        <div class="modal-body">
+          <label class="form-label">Nombre</label>
+          <input class="form-control mb-2" name="name" required>
+          <label class="form-label">Usuario</label>
+          <input class="form-control mb-2" name="username" required minlength="3" maxlength="80" pattern="[A-Za-z0-9._-]{3,80}" autocomplete="username">
+          <label class="form-label">Clave agente local</label>
+          <input class="form-control mb-2" name="worker_key" minlength="3" maxlength="40" pattern="[A-Za-z0-9._-]{3,40}" placeholder="Opcional, por defecto igual al usuario">
+          <label class="form-label">Correo</label>
+          <input class="form-control mb-2" type="email" name="email" required>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label">Rol</label>
+              <select class="form-select" name="role"><?php foreach ($roles as $role => $label): ?><option value="<?= h($role) ?>"><?= h($label) ?></option><?php endforeach; ?></select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Estado</label>
+              <select class="form-select" name="status"><option value="active">Activo</option><option value="paused">Pausado</option></select>
+            </div>
+          </div>
+          <label class="form-label mt-2">Clave temporal</label>
+          <input class="form-control mb-2 js-password-main" type="password" name="password" minlength="8" autocomplete="new-password" required>
+          <label class="form-label">Confirmar clave temporal</label>
+          <input class="form-control js-password-confirm" type="password" name="password_confirm" minlength="8" autocomplete="new-password" required>
+        </div>
+        <div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary" type="submit">Crear</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal fade" id="editUserModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form class="modal-content" method="post" action="<?= h(url_for('/users/update')) ?>">
+        <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+        <input type="hidden" name="id" id="edit-id">
+        <div class="modal-header"><h5 class="modal-title">Editar usuario</h5><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+        <div class="modal-body">
+          <label class="form-label">Nombre</label>
+          <input class="form-control mb-2" name="name" id="edit-name" required>
+          <label class="form-label">Usuario</label>
+          <input class="form-control mb-2" name="username" id="edit-username" required minlength="3" maxlength="80" pattern="[A-Za-z0-9._-]{3,80}">
+          <label class="form-label">Clave agente local</label>
+          <input class="form-control mb-2" name="worker_key" id="edit-worker-key" required minlength="3" maxlength="40" pattern="[A-Za-z0-9._-]{3,40}">
+          <div class="form-text mb-2">Cambiar esta clave requiere actualizar el agente local en esa Mac.</div>
+          <label class="form-label">Correo</label>
+          <input class="form-control mb-2" type="email" name="email" id="edit-email" required>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label">Rol</label>
+              <select class="form-select" name="role" id="edit-role"><?php foreach ($roles as $role => $label): ?><option value="<?= h($role) ?>"><?= h($label) ?></option><?php endforeach; ?></select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Estado</label>
+              <select class="form-select" name="status" id="edit-status"><option value="active">Activo</option><option value="paused">Pausado</option></select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary" type="submit">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal fade" id="resetPasswordModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form class="modal-content" method="post" action="<?= h(url_for('/users/reset-password')) ?>">
+        <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+        <input type="hidden" name="id" id="reset-id">
+        <div class="modal-header"><h5 class="modal-title">Resetear clave</h5><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+        <div class="modal-body">
+          <p class="text-muted" id="reset-user-label"></p>
+          <label class="form-label">Nueva clave temporal</label>
+          <input class="form-control mb-2 js-password-main" type="password" name="password" minlength="8" autocomplete="new-password" required>
+          <label class="form-label">Confirmar nueva clave temporal</label>
+          <input class="form-control js-password-confirm" type="password" name="password_confirm" minlength="8" autocomplete="new-password" required>
+        </div>
+        <div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary" type="submit">Actualizar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+  document.querySelectorAll('.js-edit-user').forEach((button) => {
+    button.addEventListener('click', () => {
+      document.getElementById('edit-id').value = button.dataset.id || '';
+      document.getElementById('edit-name').value = button.dataset.name || '';
+      document.getElementById('edit-username').value = button.dataset.username || '';
+      document.getElementById('edit-worker-key').value = button.dataset.workerKey || '';
+      document.getElementById('edit-email').value = button.dataset.email || '';
+      document.getElementById('edit-role').value = button.dataset.role || 'operator';
+      document.getElementById('edit-status').value = button.dataset.status || 'active';
+    });
+  });
+  document.querySelectorAll('.js-reset-user').forEach((button) => {
+    button.addEventListener('click', () => {
+      document.getElementById('reset-id').value = button.dataset.id || '';
+      document.getElementById('reset-user-label').textContent = button.dataset.name ? `Usuario: ${button.dataset.name}` : '';
+    });
+  });
+  document.querySelectorAll('form').forEach((form) => {
+    const password = form.querySelector('.js-password-main');
+    const confirm = form.querySelector('.js-password-confirm');
+    if (!password || !confirm) return;
+    const validate = () => confirm.setCustomValidity(password.value === confirm.value ? '' : 'Las claves no coinciden.');
+    password.addEventListener('input', validate);
+    confirm.addEventListener('input', validate);
+    form.addEventListener('submit', validate);
+  });
+  </script>
+<?php
+    });
+    exit;
+}
+
+if ($path === '/users/create' && $method === 'POST') {
+    require_admin_user($user);
+    Security::requireCsrf();
+    $input = normalize_user_input($_POST);
+    $password = trim((string)($_POST['password'] ?? ''));
+    $passwordConfirm = trim((string)($_POST['password_confirm'] ?? ''));
+    $errors = validate_user_input($input);
+    if (strlen($password) < 8) {
+        $errors[] = 'La clave temporal debe tener al menos 8 caracteres.';
+    }
+    if ($password !== $passwordConfirm) {
+        $errors[] = 'La confirmacion de clave no coincide.';
+    }
+    foreach (['email', 'username', 'worker_key'] as $field) {
+        if (user_field_exists($conn, $field, (string)$input[$field])) {
+            $errors[] = 'Ya existe un usuario con ' . $field . ' igual.';
+        }
+    }
+    if ($errors) {
+        flash_set('error', implode(' ', $errors));
+        redirect(url_for('/users'));
+    }
+
+    $stmt = $conn->prepare("
+      INSERT INTO users (worker_key, username, name, email, password_hash, role, worker_token, must_change_password, status)
+      VALUES (:worker_key, :username, :name, :email, :password_hash, :role, :worker_token, 1, :status)
+    ");
+    $stmt->execute([
+        ':worker_key' => $input['worker_key'],
+        ':username' => $input['username'],
+        ':name' => $input['name'],
+        ':email' => $input['email'],
+        ':password_hash' => password_hash($password, PASSWORD_DEFAULT),
+        ':role' => $input['role'],
+        ':worker_token' => random_worker_token(),
+        ':status' => $input['status'],
+    ]);
+    flash_set('success', 'Usuario creado correctamente.');
+    redirect(url_for('/users'));
+}
+
+if ($path === '/users/update' && $method === 'POST') {
+    require_admin_user($user);
+    Security::requireCsrf();
+    $input = normalize_user_input($_POST);
+    $existing = find_user($conn, (int)$input['id']);
+    if (!$existing) {
+        flash_set('error', 'No se encontro el usuario solicitado.');
+        redirect(url_for('/users'));
+    }
+    $errors = validate_user_input($input);
+    foreach (['email', 'username', 'worker_key'] as $field) {
+        if (user_field_exists($conn, $field, (string)$input[$field], (int)$input['id'])) {
+            $errors[] = 'Ya existe otro usuario con ' . $field . ' igual.';
+        }
+    }
+    if ((int)$input['id'] === (int)$user['id'] && $input['status'] !== 'active') {
+        $errors[] = 'No puedes pausar tu propio usuario.';
+    }
+    if ($existing['role'] === 'admin' && ($input['role'] !== 'admin' || $input['status'] !== 'active') && count_active_admins($conn, (int)$input['id']) === 0) {
+        $errors[] = 'Debe quedar al menos un administrador activo.';
+    }
+    if ($errors) {
+        flash_set('error', implode(' ', $errors));
+        redirect(url_for('/users'));
+    }
+
+    $stmt = $conn->prepare("
+      UPDATE users
+      SET worker_key = :worker_key, username = :username, name = :name, email = :email, role = :role, status = :status
+      WHERE id = :id
+      LIMIT 1
+    ");
+    $stmt->execute([
+        ':id' => (int)$input['id'],
+        ':worker_key' => $input['worker_key'],
+        ':username' => $input['username'],
+        ':name' => $input['name'],
+        ':email' => $input['email'],
+        ':role' => $input['role'],
+        ':status' => $input['status'],
+    ]);
+    flash_set('success', 'Usuario actualizado correctamente.');
+    redirect(url_for('/users'));
+}
+
+if ($path === '/users/reset-password' && $method === 'POST') {
+    require_admin_user($user);
+    Security::requireCsrf();
+    $id = (int)($_POST['id'] ?? 0);
+    $password = trim((string)($_POST['password'] ?? ''));
+    $passwordConfirm = trim((string)($_POST['password_confirm'] ?? ''));
+    if (!find_user($conn, $id)) {
+        flash_set('error', 'No se encontro el usuario solicitado.');
+        redirect(url_for('/users'));
+    }
+    if (strlen($password) < 8) {
+        flash_set('error', 'La clave temporal debe tener al menos 8 caracteres.');
+        redirect(url_for('/users'));
+    }
+    if ($password !== $passwordConfirm) {
+        flash_set('error', 'La confirmacion de clave no coincide.');
+        redirect(url_for('/users'));
+    }
+    $stmt = $conn->prepare("UPDATE users SET password_hash = :hash, must_change_password = 1 WHERE id = :id LIMIT 1");
+    $stmt->execute([
+        ':hash' => password_hash($password, PASSWORD_DEFAULT),
+        ':id' => $id,
+    ]);
+    flash_set('success', 'Clave temporal actualizada correctamente.');
+    redirect(url_for('/users'));
+}
 
 if ($path === '/') {
     $counts = [

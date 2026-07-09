@@ -7,16 +7,19 @@ USE argotesia_ops;
 CREATE TABLE IF NOT EXISTS users (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   worker_key VARCHAR(40) NOT NULL,
+  username VARCHAR(80) NOT NULL,
   name VARCHAR(120) NOT NULL,
   email VARCHAR(190) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('admin','operator') NOT NULL DEFAULT 'operator',
   worker_token VARCHAR(96) NOT NULL,
+  must_change_password TINYINT(1) NOT NULL DEFAULT 0,
   status ENUM('active','paused') NOT NULL DEFAULT 'active',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uk_users_worker_key (worker_key),
+  UNIQUE KEY uk_users_username (username),
   UNIQUE KEY uk_users_email (email),
   UNIQUE KEY uk_users_worker_token (worker_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -184,10 +187,11 @@ CREATE TABLE IF NOT EXISTS worker_runs (
     ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO users (id, worker_key, name, email, password_hash, role, worker_token, status) VALUES
-  (1, 'ivan', 'Ivan Argote', 'ivan@argotes.com', '$2y$12$QNkmGXVxHi8gt.M6xgvMaOTzxYKJOdTqOUt1MOgxc97LNgMm2iR/6', 'admin', '269a9f3235d419f9d7fb3575f9bf92e0e9fe18d598be8f6a', 'active'),
-  (2, 'oscar', 'Oscar Argote', 'oscar@argotes.com', '$2y$12$QNkmGXVxHi8gt.M6xgvMaOTzxYKJOdTqOUt1MOgxc97LNgMm2iR/6', 'admin', 'aceb2f3c29b5e9db32e917936d4a4135d8b002e233d9f507', 'active')
+INSERT INTO users (id, worker_key, username, name, email, password_hash, role, worker_token, must_change_password, status) VALUES
+  (1, 'ivan', 'ivan', 'Ivan Argote', 'ivan@argotes.com', '$2y$12$QNkmGXVxHi8gt.M6xgvMaOTzxYKJOdTqOUt1MOgxc97LNgMm2iR/6', 'admin', '269a9f3235d419f9d7fb3575f9bf92e0e9fe18d598be8f6a', 0, 'active'),
+  (2, 'oscar', 'oscar', 'Oscar Argote', 'oscar@argotes.com', '$2y$12$QNkmGXVxHi8gt.M6xgvMaOTzxYKJOdTqOUt1MOgxc97LNgMm2iR/6', 'admin', 'aceb2f3c29b5e9db32e917936d4a4135d8b002e233d9f507', 0, 'active')
 ON DUPLICATE KEY UPDATE
+  username = VALUES(username),
   name = VALUES(name),
   email = VALUES(email),
   role = VALUES(role),
@@ -203,4 +207,3 @@ ON DUPLICATE KEY UPDATE
   local_path_ivan = VALUES(local_path_ivan),
   codex_rules = VALUES(codex_rules),
   status = VALUES(status);
-

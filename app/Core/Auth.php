@@ -10,16 +10,20 @@ final class Auth
         Security::startSession();
     }
 
-    public function attempt(string $email, string $password): bool
+    public function attempt(string $login, string $password): bool
     {
         $stmt = $this->conn->prepare("
-          SELECT id, worker_key, name, email, password_hash, role, status
+          SELECT id, worker_key, username, name, email, password_hash, role, status, must_change_password
           FROM users
-          WHERE email = :email
+          WHERE (email = :login_email OR username = :login_username)
             AND status = 'active'
           LIMIT 1
         ");
-        $stmt->execute([':email' => strtolower(trim($email))]);
+        $normalizedLogin = strtolower(trim($login));
+        $stmt->execute([
+            ':login_email' => $normalizedLogin,
+            ':login_username' => $normalizedLogin,
+        ]);
         $user = $stmt->fetch();
         if (!$user || !password_verify($password, (string)$user['password_hash'])) {
             return false;
@@ -38,7 +42,7 @@ final class Auth
         }
 
         $stmt = $this->conn->prepare("
-          SELECT id, worker_key, name, email, role, status
+          SELECT id, worker_key, username, name, email, role, status, must_change_password
           FROM users
           WHERE id = :id
             AND status = 'active'

@@ -1,0 +1,8 @@
+RewriteEngine On
+
+RewriteRule ^(?:app|config|database|scripts|storage)(?:/|$) - [F,L]
+RewriteRule ^(?:\.env|AGENTS\.md|README\.md|docker-compose\.yml)$ - [F,L]
+
+RewriteCond %{REQUEST_URI} !^/public/
+RewriteRule ^(.*)$ public/$1 [QSA,L]
+

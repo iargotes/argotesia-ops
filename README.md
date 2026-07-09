@@ -27,3 +27,15 @@ php scripts/mac-agent.php
 ```
 
 El agente lee tickets asignados, genera una propuesta local inicial y la sube al dashboard. Si hay un modelo local HTTP compatible con Ollama, configurar `LOCAL_MODEL_URL`.
+
+## Deploy
+
+El DocumentRoot puede apuntar a la raiz del repo. `.htaccess` reenvia todo a `public/` y bloquea carpetas sensibles.
+
+```bash
+REMOTE=argotes-ops@46.202.179.60 \
+REMOTE_DIR=/home/argotes-ops/htdocs/ops.argotes.com \
+./deploy.sh
+```
+
+Crear `.env` de produccion directamente en el servidor y aplicar `database/schema.sql` en la base `argotesia_ops`.

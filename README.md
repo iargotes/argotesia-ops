@@ -30,12 +30,11 @@ El agente lee tickets asignados, genera una propuesta local inicial y la sube al
 
 ## Deploy
 
-El DocumentRoot puede apuntar a la raiz del repo. `.htaccess` reenvia todo a `public/` y bloquea carpetas sensibles.
+El deploy sube el codigo privado a `/home/argotes-ops/app` y publica solo el webroot en `/home/argotes-ops/htdocs/ops.argotes.com`.
 
 ```bash
 REMOTE=argotes-ops@46.202.179.60 \
-REMOTE_DIR=/home/argotes-ops/htdocs/ops.argotes.com \
 ./deploy.sh
 ```
 
-Crear `.env` de produccion directamente en el servidor y aplicar `database/schema.sql` en la base `argotesia_ops`.
+Crear `.env` de produccion directamente en `/home/argotes-ops/app/.env` y aplicar `/home/argotes-ops/app/database/schema.sql` en la base `argotesia_ops`.

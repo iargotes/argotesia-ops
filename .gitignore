@@ -1,0 +1,7 @@
+.env
+/storage/logs/*
+/storage/cache/*
+.DS_Store
+.idea/
+.vscode/
+

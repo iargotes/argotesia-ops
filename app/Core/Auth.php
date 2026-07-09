@@ -62,7 +62,7 @@ final class Auth
         }
 
         $returnTo = $_SERVER['REQUEST_URI'] ?? '/';
-        header('Location: /login?return=' . urlencode($returnTo));
+        header('Location: /index.php?r=' . rawurlencode('/login') . '&return=' . urlencode($returnTo));
         exit;
     }
 
@@ -76,4 +76,3 @@ final class Auth
         session_destroy();
     }
 }
-

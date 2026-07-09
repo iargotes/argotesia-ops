@@ -8,6 +8,9 @@ require_once __DIR__ . '/../app/Core/Classifier.php';
 
 $auth = new Auth($conn);
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+if (isset($_GET['r']) && is_string($_GET['r']) && $_GET['r'] !== '') {
+    $path = '/' . ltrim($_GET['r'], '/');
+}
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 function h(string $value): string
@@ -19,6 +22,11 @@ function redirect(string $url): void
 {
     header('Location: ' . $url);
     exit;
+}
+
+function url_for(string $path): string
+{
+    return '/index.php?r=' . rawurlencode('/' . ltrim($path, '/'));
 }
 
 function json_response(array $payload, int $status = 200): void
@@ -59,14 +67,14 @@ function layout(string $title, array $user, callable $body): void
   <header class="panel p-3 mb-3 d-flex flex-wrap gap-2 align-items-center">
     <div class="fw-bold h5 mb-0 me-2">ArgotesIA Ops</div>
     <nav class="nav nav-pills gap-1">
-      <a class="nav-link" href="/"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
-      <a class="nav-link" href="/intake"><i class="bi bi-whatsapp me-1"></i>Intake</a>
-      <a class="nav-link" href="/tickets"><i class="bi bi-ticket-perforated me-1"></i>Tickets</a>
-      <a class="nav-link" href="/projects"><i class="bi bi-folder2-open me-1"></i>Proyectos</a>
+      <a class="nav-link" href="<?= h(url_for('/')) ?>"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+      <a class="nav-link" href="<?= h(url_for('/intake')) ?>"><i class="bi bi-whatsapp me-1"></i>Intake</a>
+      <a class="nav-link" href="<?= h(url_for('/tickets')) ?>"><i class="bi bi-ticket-perforated me-1"></i>Tickets</a>
+      <a class="nav-link" href="<?= h(url_for('/projects')) ?>"><i class="bi bi-folder2-open me-1"></i>Proyectos</a>
     </nav>
     <div class="ms-auto small text-muted">
       <?= h((string)$user['name']) ?> · <?= h((string)$user['worker_key']) ?>
-      <a class="btn btn-outline-danger btn-sm ms-2" href="/logout">Salir</a>
+      <a class="btn btn-outline-danger btn-sm ms-2" href="<?= h(url_for('/logout')) ?>">Salir</a>
     </div>
   </header>
   <?php $body($csrf); ?>
@@ -228,7 +236,7 @@ if ($path === '/login' && $method === 'GET') {
     <div class="h4 fw-bold mb-1">ArgotesIA Ops</div>
     <div class="text-muted mb-3">Operacion interna Ivan/Oscar</div>
     <?php if ($error !== ''): ?><div class="alert alert-danger"><?= h($error) ?></div><?php endif; ?>
-    <form method="post" action="/login">
+    <form method="post" action="<?= h(url_for('/login')) ?>">
       <input type="hidden" name="_csrf" value="<?= h(Security::csrfToken()) ?>">
       <label class="form-label">Email</label>
       <input class="form-control mb-2" type="email" name="email" required value="ivan@argotes.com">
@@ -248,12 +256,12 @@ if ($path === '/login' && $method === 'POST') {
     if ($auth->attempt((string)($_POST['email'] ?? ''), (string)($_POST['password'] ?? ''))) {
         redirect((string)($_GET['return'] ?? '/'));
     }
-    redirect('/login?error=' . urlencode('Credenciales invalidas.'));
+    redirect(url_for('/login') . '&error=' . urlencode('Credenciales invalidas.'));
 }
 
 if ($path === '/logout') {
     $auth->logout();
-    redirect('/login');
+    redirect(url_for('/login'));
 }
 
 $user = $auth->requireAuth();
@@ -288,7 +296,7 @@ if ($path === '/') {
   <div class="panel p-3">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <div class="fw-bold">Cola operativa</div>
-      <a class="btn btn-primary btn-sm" href="/intake">Capturar WhatsApp</a>
+      <a class="btn btn-primary btn-sm" href="<?= h(url_for('/intake')) ?>">Capturar WhatsApp</a>
     </div>
     <div class="table-responsive">
       <table class="table table-sm align-middle">
@@ -300,7 +308,7 @@ if ($path === '/') {
             <td><?= h((string)($ticket['project_name'] ?? '-')) ?></td>
             <td><?= h((string)($ticket['assignee_name'] ?? 'Sin asignar')) ?></td>
             <td><span class="badge text-bg-secondary"><?= h((string)$ticket['status']) ?></span> <span class="badge text-bg-warning"><?= h((string)$ticket['urgency']) ?></span></td>
-            <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="/tickets/view?id=<?= (int)$ticket['id'] ?>">Abrir</a></td>
+            <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="<?= h(url_for('/tickets/view')) ?>&id=<?= (int)$ticket['id'] ?>">Abrir</a></td>
           </tr>
         <?php endforeach; ?>
         <?php if (!$tickets): ?><tr><td colspan="5" class="text-muted">Sin tickets activos.</td></tr><?php endif; ?>
@@ -331,7 +339,7 @@ if ($path === '/intake' && $method === 'GET') {
     <div class="col-12 col-lg-5">
       <div class="panel p-3">
         <div class="fw-bold mb-2">Capturar WhatsApp/audio</div>
-        <form method="post" action="/intake/create">
+        <form method="post" action="<?= h(url_for('/intake/create')) ?>">
           <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
           <div class="row g-2">
             <div class="col-6">
@@ -373,8 +381,8 @@ if ($path === '/intake' && $method === 'GET') {
             <div class="small mt-2"><?= nl2br(h(mb_substr((string)$item['transcript'], 0, 380))) ?><?= mb_strlen((string)$item['transcript']) > 380 ? '...' : '' ?></div>
             <?php if (!empty($item['ai_summary'])): ?><pre class="mono bg-light p-2 rounded mt-2"><?= h((string)$item['ai_summary']) ?></pre><?php endif; ?>
             <div class="d-flex gap-2 mt-2">
-              <form method="post" action="/intake/classify"><input type="hidden" name="_csrf" value="<?= h($csrf) ?>"><input type="hidden" name="id" value="<?= (int)$item['id'] ?>"><button class="btn btn-outline-primary btn-sm">Clasificar</button></form>
-              <form method="post" action="/intake/create-ticket"><input type="hidden" name="_csrf" value="<?= h($csrf) ?>"><input type="hidden" name="id" value="<?= (int)$item['id'] ?>"><button class="btn btn-success btn-sm" <?= $item['status'] === 'ticket_creado' ? 'disabled' : '' ?>>Crear ticket</button></form>
+              <form method="post" action="<?= h(url_for('/intake/classify')) ?>"><input type="hidden" name="_csrf" value="<?= h($csrf) ?>"><input type="hidden" name="id" value="<?= (int)$item['id'] ?>"><button class="btn btn-outline-primary btn-sm">Clasificar</button></form>
+              <form method="post" action="<?= h(url_for('/intake/create-ticket')) ?>"><input type="hidden" name="_csrf" value="<?= h($csrf) ?>"><input type="hidden" name="id" value="<?= (int)$item['id'] ?>"><button class="btn btn-success btn-sm" <?= $item['status'] === 'ticket_creado' ? 'disabled' : '' ?>>Crear ticket</button></form>
             </div>
           </div>
         <?php endforeach; ?>
@@ -392,7 +400,7 @@ if ($path === '/intake/create' && $method === 'POST') {
     $title = trim((string)($_POST['title'] ?? ''));
     $transcript = trim((string)($_POST['transcript'] ?? ''));
     if ($title === '' || $transcript === '') {
-        redirect('/intake');
+        redirect(url_for('/intake'));
     }
 
     $result = Classifier::classify($conn, $title, $transcript);
@@ -428,7 +436,7 @@ if ($path === '/intake/create' && $method === 'POST') {
       ':client_reply_draft' => $result['client_reply_draft'],
       ':created_by_user_id' => (int)$user['id'],
     ]);
-    redirect('/intake');
+    redirect(url_for('/intake'));
 }
 
 if ($path === '/intake/classify' && $method === 'POST') {
@@ -459,7 +467,7 @@ if ($path === '/intake/classify' && $method === 'POST') {
           ':id' => $id,
         ]);
     }
-    redirect('/intake');
+    redirect(url_for('/intake'));
 }
 
 if ($path === '/intake/create-ticket' && $method === 'POST') {
@@ -469,7 +477,7 @@ if ($path === '/intake/create-ticket' && $method === 'POST') {
     $stmt->execute([':id' => $id]);
     $item = $stmt->fetch();
     if (!$item) {
-        redirect('/intake');
+        redirect(url_for('/intake'));
     }
 
     $status = !empty($item['assigned_user_id']) ? 'asignado' : 'nuevo';
@@ -503,7 +511,7 @@ if ($path === '/intake/create-ticket' && $method === 'POST') {
 
     $stmt = $conn->prepare("UPDATE intake_items SET status = 'ticket_creado' WHERE id = :id LIMIT 1");
     $stmt->execute([':id' => $id]);
-    redirect('/tickets/view?id=' . $ticketId);
+    redirect(url_for('/tickets/view') . '&id=' . $ticketId);
 }
 
 if ($path === '/tickets' && $method === 'GET') {
@@ -519,7 +527,7 @@ if ($path === '/tickets' && $method === 'GET') {
     layout('Tickets', $user, function () use ($tickets) {
         ?>
   <div class="panel p-3">
-    <div class="d-flex justify-content-between align-items-center mb-2"><div class="fw-bold">Tickets</div><a class="btn btn-primary btn-sm" href="/intake">Nuevo desde WhatsApp</a></div>
+    <div class="d-flex justify-content-between align-items-center mb-2"><div class="fw-bold">Tickets</div><a class="btn btn-primary btn-sm" href="<?= h(url_for('/intake')) ?>">Nuevo desde WhatsApp</a></div>
     <div class="table-responsive">
       <table class="table table-sm align-middle">
         <thead><tr><th>Codigo</th><th>Titulo</th><th>Cliente</th><th>Asignado</th><th>Estado</th><th></th></tr></thead>
@@ -531,7 +539,7 @@ if ($path === '/tickets' && $method === 'GET') {
             <td><?= h((string)($ticket['client_name'] ?? '')) ?></td>
             <td><?= h((string)($ticket['assignee_name'] ?? 'Sin asignar')) ?></td>
             <td><span class="badge text-bg-secondary"><?= h((string)$ticket['status']) ?></span></td>
-            <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="/tickets/view?id=<?= (int)$ticket['id'] ?>">Abrir</a></td>
+            <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="<?= h(url_for('/tickets/view')) ?>&id=<?= (int)$ticket['id'] ?>">Abrir</a></td>
           </tr>
         <?php endforeach; ?>
         </tbody>
@@ -596,7 +604,7 @@ if ($path === '/tickets/view' && $method === 'GET') {
     <div class="col-12 col-lg-5">
       <div class="panel p-3 mb-3">
         <div class="fw-bold mb-2">Control humano</div>
-        <form class="mb-2" method="post" action="/tickets/assign">
+        <form class="mb-2" method="post" action="<?= h(url_for('/tickets/assign')) ?>">
           <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
           <input type="hidden" name="id" value="<?= (int)$ticket['id'] ?>">
           <label class="form-label small">Asignar</label>
@@ -605,7 +613,7 @@ if ($path === '/tickets/view' && $method === 'GET') {
           </select>
           <button class="btn btn-outline-primary btn-sm">Guardar asignacion</button>
         </form>
-        <form method="post" action="/tickets/status">
+        <form method="post" action="<?= h(url_for('/tickets/status')) ?>">
           <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
           <input type="hidden" name="id" value="<?= (int)$ticket['id'] ?>">
           <label class="form-label small">Estado</label>
@@ -633,7 +641,7 @@ if ($path === '/tickets/assign' && $method === 'POST') {
     $stmt = $conn->prepare("UPDATE tickets SET assigned_user_id = :assigned_user_id, status = 'asignado' WHERE id = :id LIMIT 1");
     $stmt->execute([':assigned_user_id' => $assignedUserId ?: null, ':id' => $id]);
     add_event($conn, $id, (int)$user['id'], 'assigned', 'Ticket asignado.');
-    redirect('/tickets/view?id=' . $id);
+    redirect(url_for('/tickets/view') . '&id=' . $id);
 }
 
 if ($path === '/tickets/status' && $method === 'POST') {
@@ -647,7 +655,7 @@ if ($path === '/tickets/status' && $method === 'POST') {
     $stmt = $conn->prepare("UPDATE tickets SET status = :status, closed_at = IF(:status2 IN ('cerrado','descartado'), NOW(), closed_at) WHERE id = :id LIMIT 1");
     $stmt->execute([':status' => $status, ':status2' => $status, ':id' => $id]);
     add_event($conn, $id, (int)$user['id'], 'status_changed', 'Estado actualizado a ' . $status . '.');
-    redirect('/tickets/view?id=' . $id);
+    redirect(url_for('/tickets/view') . '&id=' . $id);
 }
 
 if ($path === '/projects' && $method === 'GET') {
@@ -658,7 +666,7 @@ if ($path === '/projects' && $method === 'GET') {
     <div class="col-12 col-lg-5">
       <div class="panel p-3">
         <div class="fw-bold mb-2">Proyecto</div>
-        <form method="post" action="/projects/save">
+        <form method="post" action="<?= h(url_for('/projects/save')) ?>">
           <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
           <input class="form-control soft mb-2" name="name" required placeholder="Nombre">
           <input class="form-control soft mb-2" name="project_key" placeholder="clave-proyecto">
@@ -695,7 +703,7 @@ if ($path === '/projects/save' && $method === 'POST') {
     Security::requireCsrf();
     $name = trim((string)($_POST['name'] ?? ''));
     if ($name === '') {
-        redirect('/projects');
+        redirect(url_for('/projects'));
     }
     $key = trim((string)($_POST['project_key'] ?? ''));
     if ($key === '') {
@@ -719,9 +727,8 @@ if ($path === '/projects/save' && $method === 'POST') {
       ':repo_url' => trim((string)($_POST['repo_url'] ?? '')) ?: null,
       ':codex_rules' => trim((string)($_POST['codex_rules'] ?? '')) ?: null,
     ]);
-    redirect('/projects');
+    redirect(url_for('/projects'));
 }
 
 http_response_code(404);
 echo 'Not found';
-

@@ -12,7 +12,7 @@ if ($token === '') {
     exit(1);
 }
 
-$tasks = api_get($baseUrl . '/api/worker/tasks?worker_key=' . urlencode($workerKey), $token);
+$tasks = api_get($baseUrl . '/index.php?r=' . rawurlencode('/api/worker/tasks') . '&worker_key=' . urlencode($workerKey), $token);
 if (!($tasks['ok'] ?? false)) {
     fwrite(STDERR, "Could not fetch tasks: " . json_encode($tasks) . "\n");
     exit(1);
@@ -33,7 +33,7 @@ foreach ($tickets as $ticket) {
         'client_reply_draft' => $proposal['client_reply_draft'],
     ];
 
-    $response = api_post($baseUrl . '/api/worker/proposals?worker_key=' . urlencode($workerKey), $token, $payload);
+    $response = api_post($baseUrl . '/index.php?r=' . rawurlencode('/api/worker/proposals') . '&worker_key=' . urlencode($workerKey), $token, $payload);
     if ($response['ok'] ?? false) {
         echo "Uploaded proposal {$response['proposal_id']} for {$ticket['code']}.\n";
     } else {
@@ -153,4 +153,3 @@ function decode_response(false|string $raw): array
     $decoded = json_decode($raw, true);
     return is_array($decoded) ? $decoded : ['ok' => false, 'error' => 'invalid json', 'raw' => $raw];
 }
-

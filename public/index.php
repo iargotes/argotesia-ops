@@ -487,28 +487,42 @@ if ($path === '/api/worker/proposals' && $method === 'POST') {
     }
 
     $ticketId = (int)($input['ticket_id'] ?? 0);
+    $ticketCode = strtoupper(trim((string)($input['ticket_code'] ?? '')));
     $body = trim((string)($input['body'] ?? ''));
     $modelName = trim((string)($input['model_name'] ?? 'local-model'));
+    $source = strtolower(trim((string)($input['source'] ?? 'local_model')));
     $clientReply = trim((string)($input['client_reply_draft'] ?? ''));
-    if ($ticketId <= 0 || $body === '') {
-        json_response(['ok' => false, 'error' => 'ticket_id/body required'], 400);
+    if (($ticketId <= 0 && $ticketCode === '') || $body === '') {
+        json_response(['ok' => false, 'error' => 'ticket_id or ticket_code, and body required'], 400);
+    }
+    if (!in_array($source, ['local_model', 'codex', 'manual'], true)) {
+        json_response(['ok' => false, 'error' => 'invalid proposal source'], 422);
     }
 
-    $stmt = $conn->prepare("SELECT id FROM tickets WHERE id = :id AND assigned_user_id = :uid LIMIT 1");
-    $stmt->execute([':id' => $ticketId, ':uid' => (int)$worker['id']]);
-    if (!$stmt->fetch()) {
+    if ($ticketId > 0) {
+        $stmt = $conn->prepare("SELECT id, code FROM tickets WHERE id = :id AND assigned_user_id = :uid AND status NOT IN ('cerrado','descartado') LIMIT 1");
+        $stmt->execute([':id' => $ticketId, ':uid' => (int)$worker['id']]);
+    } else {
+        $stmt = $conn->prepare("SELECT id, code FROM tickets WHERE code = :code AND assigned_user_id = :uid AND status NOT IN ('cerrado','descartado') LIMIT 1");
+        $stmt->execute([':code' => $ticketCode, ':uid' => (int)$worker['id']]);
+    }
+    $ticket = $stmt->fetch();
+    if (!$ticket) {
         json_response(['ok' => false, 'error' => 'ticket not assigned to worker'], 403);
     }
+    $ticketId = (int)$ticket['id'];
+    $ticketCode = (string)$ticket['code'];
 
     $conn->beginTransaction();
     try {
         $stmt = $conn->prepare("
           INSERT INTO ticket_proposals (ticket_id, worker_user_id, source, model_name, status, body, client_reply_draft)
-          VALUES (:ticket_id, :worker_user_id, 'local_model', :model_name, 'ready', :body, :client_reply)
+          VALUES (:ticket_id, :worker_user_id, :source, :model_name, 'ready', :body, :client_reply)
         ");
         $stmt->execute([
           ':ticket_id' => $ticketId,
           ':worker_user_id' => (int)$worker['id'],
+          ':source' => $source,
           ':model_name' => $modelName !== '' ? $modelName : null,
           ':body' => $body,
           ':client_reply' => $clientReply !== '' ? $clientReply : null,
@@ -518,13 +532,13 @@ if ($path === '/api/worker/proposals' && $method === 'POST') {
         $stmt = $conn->prepare("UPDATE tickets SET status = 'en_revision', client_reply_draft = COALESCE(:reply, client_reply_draft) WHERE id = :id LIMIT 1");
         $stmt->execute([':reply' => $clientReply !== '' ? $clientReply : null, ':id' => $ticketId]);
 
-        add_event($conn, $ticketId, (int)$worker['id'], 'proposal_ready', 'Propuesta local lista para revision.');
+        add_event($conn, $ticketId, (int)$worker['id'], 'proposal_ready', 'Propuesta ' . $source . ' lista para revision.');
 
         $stmt = $conn->prepare("INSERT INTO worker_runs (worker_user_id, ticket_id, status, message) VALUES (:worker_id, :ticket_id, 'completed', :message)");
         $stmt->execute([':worker_id' => (int)$worker['id'], ':ticket_id' => $ticketId, ':message' => 'Proposal #' . $proposalId . ' uploaded']);
 
         $conn->commit();
-        json_response(['ok' => true, 'proposal_id' => $proposalId]);
+        json_response(['ok' => true, 'proposal_id' => $proposalId, 'ticket_code' => $ticketCode, 'source' => $source]);
     } catch (Throwable $e) {
         $conn->rollBack();
         json_response(['ok' => false, 'error' => 'proposal save failed'], 500);

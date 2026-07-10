@@ -257,6 +257,31 @@ Acciones permitidas:
 El worker de cada Mac usa su `worker_token` para leer tareas y actualizaciones. No se
 comparte el token de Ivan con Oscar.
 
+`GET /api/worker/tasks?worker_key=oscar`
+
+Devuelve solo tickets procesables asignados al worker autenticado, incluyendo las rutas
+locales de ambos operadores, repo, SSH, reglas y contexto del proyecto. El comando
+`php scripts/mac-agent.php tasks` lo consulta sin generar ni subir propuestas.
+
+`POST /api/worker/proposals?worker_key=oscar`
+
+Permite subir una propuesta del modelo local o de Codex. Se puede identificar el ticket
+por `ticket_id` o por `ticket_code`; debe seguir asignado al worker y no estar cerrado ni
+descartado.
+
+```json
+{
+  "ticket_code": "OPS-2026-00042",
+  "source": "codex",
+  "model_name": "codex",
+  "body": "Diagnostico, plan, pruebas y riesgos. No se implementaron cambios.",
+  "client_reply_draft": "Borrador opcional, aun no enviado."
+}
+```
+
+Fuentes permitidas: `local_model`, `codex` y `manual`. Una propuesta aceptada queda
+`ready`, mueve el ticket a `en_revision` y registra `proposal_ready`.
+
 `GET /api/worker/updates?since_id=0&limit=50`
 
 Devuelve respuestas de Telegram y decisiones humanas para tickets asignados al worker:

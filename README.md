@@ -37,6 +37,14 @@ Esta carpeta no reemplaza la aplicacion PHP ni su base de datos.
 
 El worker local es el puente entre Ops, el modelo local y Codex. Se instala con el mismo codigo en las dos Macs; solo cambian `OPS_WORKER_KEY`, `OPS_WORKER_TOKEN`, las rutas de proyectos y el modelo local.
 
+Configuracion y proceso completo de Oscar: [`docs/local-agent-oscar.md`](docs/local-agent-oscar.md).
+
+Inicio rapido de Oscar:
+
+```bash
+./scripts/setup-oscar-agent.sh
+```
+
 ```bash
 OPS_BASE_URL=http://127.0.0.1:8090 \
 OPS_WORKER_KEY=ivan \
@@ -45,6 +53,18 @@ php scripts/mac-agent.php
 ```
 
 El agente lee tickets asignados, genera una propuesta local inicial y la sube al dashboard. Si hay un modelo local HTTP compatible con Ollama, configurar `LOCAL_MODEL_URL`.
+
+Para que Codex liste tickets sin generar una propuesta:
+
+```bash
+php scripts/mac-agent.php tasks
+```
+
+Para subir una propuesta escrita por Codex:
+
+```bash
+php scripts/mac-agent.php submit OPS-2026-00042 proposal.md
+```
 
 Para que Codex o el agente hagan una pregunta interna:
 

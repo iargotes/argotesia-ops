@@ -48,8 +48,60 @@ if ($command === 'updates') {
     exit(($updates['ok'] ?? false) ? 0 : 1);
 }
 
+if ($command === 'tasks') {
+    if ($token === '') {
+        fwrite(STDERR, "OPS_WORKER_TOKEN is required.\n");
+        exit(1);
+    }
+    $tasks = api_get($baseUrl . '/index.php?r=' . rawurlencode('/api/worker/tasks') . '&worker_key=' . urlencode($workerKey), $token);
+    echo json_encode($tasks, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
+    exit(($tasks['ok'] ?? false) ? 0 : 1);
+}
+
+if ($command === 'submit') {
+    if ($token === '') {
+        fwrite(STDERR, "OPS_WORKER_TOKEN is required.\n");
+        exit(1);
+    }
+    $ticketCode = strtoupper(trim((string)($argv[2] ?? '')));
+    $proposalPath = (string)($argv[3] ?? '');
+    $replyPath = (string)($argv[4] ?? '');
+    if ($ticketCode === '' || $proposalPath === '' || !is_readable($proposalPath)) {
+        fwrite(STDERR, "Usage: php scripts/mac-agent.php submit OPS-2026-00042 proposal.md [client-reply.md]\n");
+        exit(1);
+    }
+    if ($replyPath !== '' && !is_readable($replyPath)) {
+        fwrite(STDERR, "Client reply file is not readable: {$replyPath}\n");
+        exit(1);
+    }
+    $body = trim((string)file_get_contents($proposalPath));
+    $clientReply = $replyPath !== '' ? trim((string)file_get_contents($replyPath)) : '';
+    if ($body === '') {
+        fwrite(STDERR, "Proposal file is empty.\n");
+        exit(1);
+    }
+
+    $response = api_post(
+        $baseUrl . '/index.php?r=' . rawurlencode('/api/worker/proposals') . '&worker_key=' . urlencode($workerKey),
+        $token,
+        [
+            'ticket_code' => $ticketCode,
+            'source' => 'codex',
+            'model_name' => 'codex',
+            'body' => $body,
+            'client_reply_draft' => $clientReply,
+        ]
+    );
+    if (!($response['ok'] ?? false)) {
+        fwrite(STDERR, "Could not submit Codex proposal: " . json_encode($response) . "\n");
+        exit(1);
+    }
+    echo "Uploaded Codex proposal {$response['proposal_id']} for {$ticketCode}.\n";
+    exit(0);
+}
+
 if ($command !== 'run') {
-    fwrite(STDERR, "Commands: run (default), ask, updates.\n");
+    fwrite(STDERR, "Commands: run (default), tasks, submit, ask, updates.\n");
     exit(1);
 }
 
@@ -74,6 +126,7 @@ foreach ($tickets as $ticket) {
     $proposal = generate_proposal($ticket, $modelUrl, $modelName, $workerKey);
     $payload = [
         'ticket_id' => (int)$ticket['id'],
+        'source' => 'local_model',
         'model_name' => $proposal['model_name'],
         'body' => $proposal['body'],
         'client_reply_draft' => $proposal['client_reply_draft'],

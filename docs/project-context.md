@@ -131,6 +131,12 @@ probablemente esta usando la plantilla del servidor en vez de la configuracion d
 
 ## Comandos del agente local
 
+Configuracion y proceso exacto de Oscar: `docs/local-agent-oscar.md`.
+
+El worker local es un bridge CLI. No abre Codex ni implementa por si mismo. En modo
+automatico llama al modelo local y sube una propuesta; en modo Codex, el agente usa
+`tasks`, inspecciona el repo cliente en solo lectura y sube el resultado con `submit`.
+
 Cada Mac configura las mismas variables, cambiando `OPS_WORKER_KEY`,
 `OPS_WORKER_TOKEN`, ruta y modelo local.
 
@@ -138,6 +144,18 @@ Leer respuestas y autorizaciones:
 
 ```bash
 php scripts/mac-agent.php updates 0
+```
+
+Listar tickets sin generar propuestas:
+
+```bash
+php scripts/mac-agent.php tasks
+```
+
+Subir una propuesta preparada por Codex:
+
+```bash
+php scripts/mac-agent.php submit OPS-2026-00042 proposal.md
 ```
 
 Procesar tickets asignados y subir propuestas:
@@ -243,6 +261,9 @@ git log -5 --oneline --decorate
 | `database/migrate_*.sql` | Migraciones idempotentes |
 | `scripts/mac-agent.php` | Worker comun para ambas Macs |
 | `scripts/ops-agent-ivan.sh` | Lanzador local especifico de Ivan |
+| `scripts/ops-agent-oscar.sh` | Lanzador local especifico de Oscar |
+| `scripts/setup-oscar-agent.sh` | Valida configuracion y autenticacion de Oscar |
+| `scripts/install-oscar-agent.sh` | Instala el modo modelo local cada 60 segundos |
 | `scripts/register-project.php` | Registro de fichas JSON de proyectos |
 | `integrations/ai-native-whatsapp/` | FastAPI, Telegram y conector WhatsApp |
 | `docs/api-contract.md` | Contrato estable de integraciones |

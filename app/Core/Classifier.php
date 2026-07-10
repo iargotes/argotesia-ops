@@ -109,7 +109,12 @@ final class Classifier
         $projectName = $project['name'] ?? 'Proyecto por confirmar';
         $ivanPath = $project['local_path_ivan'] ?? 'No configurado';
         $oscarPath = $project['local_path_oscar'] ?? 'No configurado';
-        $ssh = $project['server_ssh'] ?? 'No configurado';
+        $workerKey = strtolower((string)($assigned['worker_key'] ?? ''));
+        $sshField = $workerKey === 'oscar' ? 'server_ssh_oscar' : 'server_ssh_ivan';
+        $ssh = trim((string)($project[$sshField] ?? ''));
+        if ($ssh === '') {
+            $ssh = 'No configurado para ' . ($workerKey !== '' ? $workerKey : 'el operador');
+        }
         $repo = $project['repo_url'] ?? 'No configurado';
         $rules = $project['codex_rules'] ?? 'No implementar sin autorizacion humana.';
         $owner = $assigned['name'] ?? 'Por asignar';

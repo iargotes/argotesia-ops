@@ -259,8 +259,10 @@ comparte el token de Ivan con Oscar.
 
 `GET /api/worker/tasks?worker_key=oscar`
 
-Devuelve solo tickets procesables asignados al worker autenticado, incluyendo las rutas
-locales de ambos operadores, repo, SSH, reglas y contexto del proyecto. El comando
+Devuelve solo tickets procesables asignados al worker autenticado. El servidor reduce los
+datos por identidad y entrega `local_path` y `server_ssh_target` del worker actual; no
+expone rutas ni destinos SSH del otro operador. Tambien incluye repo, reglas y un contexto
+operativo sanitizado. El comando
 `php scripts/mac-agent.php tasks` lo consulta sin generar ni subir propuestas.
 
 `POST /api/worker/proposals?worker_key=oscar`

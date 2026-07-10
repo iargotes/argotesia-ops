@@ -29,3 +29,4 @@
 - Para Oscar, leer y seguir `docs/local-agent-oscar.md`.
 - Usar `tasks` para leer trabajo sin procesarlo y `submit` para subir una propuesta de Codex.
 - Despues de una aprobacion, esperar una orden humana nueva antes de editar el repo cliente.
+- Elegir `server_ssh_ivan` o `server_ssh_oscar` segun el worker; las llaves quedan en `~/.ssh` de cada Mac.

@@ -437,7 +437,8 @@ if ($path === '/api/worker/tasks' && $method === 'GET') {
       SELECT
         t.id, t.code, t.title, t.description, t.client_name, t.client_contact,
         t.source_channel, t.intent, t.urgency, t.status, t.client_reply_draft,
-        p.name AS project_name, p.local_path_ivan, p.local_path_oscar, p.server_ssh, p.repo_url, p.codex_rules
+        p.name AS project_name, p.local_path_ivan, p.local_path_oscar, p.server_ssh, p.repo_url, p.codex_rules,
+        p.aliases AS project_aliases, p.operational_context AS project_operational_context
       FROM tickets t
       LEFT JOIN projects p ON p.id = t.project_id
       WHERE t.assigned_user_id = :uid
@@ -679,7 +680,12 @@ if ($path === '/api/intake/messages' && $method === 'POST') {
         $rawNotes = trim($rawNotes . "\n\nMetadata:\n" . json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
-    $classification = Classifier::classify($conn, $title, $transcript);
+    $classification = Classifier::classify(
+        $conn,
+        $title,
+        $transcript,
+        trim((string)($input['client_contact'] ?? ''))
+    );
     $projectOverride = project_id_from_key($conn, $input['project_key'] ?? null);
     if ($projectOverride !== null) {
         $classification['project_id'] = $projectOverride;
@@ -1708,11 +1714,14 @@ if ($path === '/projects' && $method === 'GET') {
           <input class="form-control soft mb-2" name="name" required placeholder="Nombre">
           <input class="form-control soft mb-2" name="project_key" placeholder="clave-proyecto">
           <input class="form-control soft mb-2" name="client_name" placeholder="Cliente">
+          <textarea class="form-control soft mb-2" name="aliases" rows="2" placeholder="Alias, uno por linea"></textarea>
+          <textarea class="form-control soft mb-2" name="client_phones" rows="2" placeholder="Telefonos del cliente, uno por linea"></textarea>
           <input class="form-control soft mb-2" name="local_path_ivan" placeholder="Ruta local Ivan">
           <input class="form-control soft mb-2" name="local_path_oscar" placeholder="Ruta local Oscar">
           <input class="form-control soft mb-2" name="server_ssh" placeholder="SSH servidor">
           <input class="form-control soft mb-2" name="repo_url" placeholder="Repo Git">
           <textarea class="form-control soft mb-2" name="codex_rules" rows="3" placeholder="Reglas Codex"></textarea>
+          <textarea class="form-control soft mb-2 font-monospace" name="operational_context" rows="5" placeholder="Contexto operativo JSON"></textarea>
           <button class="btn btn-primary">Guardar</button>
         </form>
       </div>
@@ -1723,6 +1732,8 @@ if ($path === '/projects' && $method === 'GET') {
         <?php foreach ($items as $project): ?>
           <div class="border rounded-3 p-3 mb-2">
             <strong><?= h((string)$project['name']) ?></strong><div class="small text-muted"><?= h((string)$project['project_key']) ?> · <?= h((string)($project['client_name'] ?? '')) ?></div>
+            <?php if (!empty($project['aliases'])): ?><div class="small">Alias: <?= h(str_replace("\n", ', ', (string)$project['aliases'])) ?></div><?php endif; ?>
+            <?php if (!empty($project['client_phones'])): ?><div class="small">Telefonos: <?= h(str_replace("\n", ', ', (string)$project['client_phones'])) ?></div><?php endif; ?>
             <div class="small">Ivan: <?= h((string)($project['local_path_ivan'] ?? '-')) ?></div>
             <div class="small">Oscar: <?= h((string)($project['local_path_oscar'] ?? '-')) ?></div>
             <div class="small">SSH: <?= h((string)($project['server_ssh'] ?? '-')) ?></div>
@@ -1747,22 +1758,25 @@ if ($path === '/projects/save' && $method === 'POST') {
         $key = trim(strtolower((string)preg_replace('/[^a-z0-9]+/i', '-', $name)), '-');
     }
     $stmt = $conn->prepare("
-      INSERT INTO projects (project_key, name, client_name, local_path_ivan, local_path_oscar, server_ssh, repo_url, codex_rules)
-      VALUES (:project_key, :name, :client_name, :local_path_ivan, :local_path_oscar, :server_ssh, :repo_url, :codex_rules)
+      INSERT INTO projects (project_key, name, client_name, aliases, client_phones, local_path_ivan, local_path_oscar, server_ssh, repo_url, codex_rules, operational_context)
+      VALUES (:project_key, :name, :client_name, :aliases, :client_phones, :local_path_ivan, :local_path_oscar, :server_ssh, :repo_url, :codex_rules, :operational_context)
       ON DUPLICATE KEY UPDATE
-        name = VALUES(name), client_name = VALUES(client_name), local_path_ivan = VALUES(local_path_ivan),
+        name = VALUES(name), client_name = VALUES(client_name), aliases = VALUES(aliases), client_phones = VALUES(client_phones), local_path_ivan = VALUES(local_path_ivan),
         local_path_oscar = VALUES(local_path_oscar), server_ssh = VALUES(server_ssh), repo_url = VALUES(repo_url),
-        codex_rules = VALUES(codex_rules), status = 'active'
+        codex_rules = VALUES(codex_rules), operational_context = VALUES(operational_context), status = 'active'
     ");
     $stmt->execute([
       ':project_key' => $key,
       ':name' => $name,
       ':client_name' => trim((string)($_POST['client_name'] ?? '')) ?: null,
+      ':aliases' => trim((string)($_POST['aliases'] ?? '')) ?: null,
+      ':client_phones' => trim((string)($_POST['client_phones'] ?? '')) ?: null,
       ':local_path_ivan' => trim((string)($_POST['local_path_ivan'] ?? '')) ?: null,
       ':local_path_oscar' => trim((string)($_POST['local_path_oscar'] ?? '')) ?: null,
       ':server_ssh' => trim((string)($_POST['server_ssh'] ?? '')) ?: null,
       ':repo_url' => trim((string)($_POST['repo_url'] ?? '')) ?: null,
       ':codex_rules' => trim((string)($_POST['codex_rules'] ?? '')) ?: null,
+      ':operational_context' => trim((string)($_POST['operational_context'] ?? '')) ?: null,
     ]);
     redirect(url_for('/projects'));
 }

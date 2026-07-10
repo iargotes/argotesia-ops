@@ -106,3 +106,9 @@ REMOTE=argotes-ops@46.202.179.60 \
 ```
 
 Crear `.env` de produccion directamente en `/home/argotes-ops/app/.env` y aplicar `/home/argotes-ops/app/database/schema.sql` en la base `argotesia_ops`.
+
+Para instalaciones existentes, aplicar `database/migrate_project_context.sql`. Las fichas JSON de proyecto aceptan `aliases` y `client_phones` como listas; los telefonos permiten resolver el proyecto sin usar IA. Se registran sin exponer secretos con:
+
+```bash
+php scripts/register-project.php /ruta/proyecto.json
+```

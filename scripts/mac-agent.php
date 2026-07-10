@@ -71,7 +71,7 @@ if (!$tickets) {
 }
 
 foreach ($tickets as $ticket) {
-    $proposal = generate_proposal($ticket, $modelUrl, $modelName);
+    $proposal = generate_proposal($ticket, $modelUrl, $modelName, $workerKey);
     $payload = [
         'ticket_id' => (int)$ticket['id'],
         'model_name' => $proposal['model_name'],
@@ -87,9 +87,9 @@ foreach ($tickets as $ticket) {
     }
 }
 
-function generate_proposal(array $ticket, string $modelUrl, string $modelName): array
+function generate_proposal(array $ticket, string $modelUrl, string $modelName, string $workerKey): array
 {
-    $prompt = build_prompt($ticket);
+    $prompt = build_prompt($ticket, $workerKey);
     if ($modelUrl !== '') {
         $body = call_local_model($modelUrl, $modelName, $prompt);
         if ($body !== '') {
@@ -111,10 +111,11 @@ function generate_proposal(array $ticket, string $modelUrl, string $modelName): 
     ];
 }
 
-function build_prompt(array $ticket): string
+function build_prompt(array $ticket, string $workerKey): string
 {
-    $path = ((string)($ticket['project_name'] ?? '') !== '' && (string)($ticket['local_path_ivan'] ?? '') !== '')
-        ? (string)$ticket['local_path_ivan']
+    $pathKey = strtolower($workerKey) === 'oscar' ? 'local_path_oscar' : 'local_path_ivan';
+    $path = (string)($ticket[$pathKey] ?? '') !== ''
+        ? (string)$ticket[$pathKey]
         : 'Ruta local por confirmar';
 
     return trim(
@@ -124,7 +125,9 @@ function build_prompt(array $ticket): string
         "Ruta local: {$path}\n" .
         "SSH: " . ((string)($ticket['server_ssh'] ?? 'No configurado')) . "\n" .
         "Repo: " . ((string)($ticket['repo_url'] ?? 'No configurado')) . "\n" .
+        "Alias: " . ((string)($ticket['project_aliases'] ?? 'No configurados')) . "\n" .
         "Reglas: " . ((string)($ticket['codex_rules'] ?? 'No implementar sin aprobacion humana.')) . "\n\n" .
+        "Contexto operativo del proyecto:\n" . ((string)($ticket['project_operational_context'] ?? 'No configurado')) . "\n\n" .
         "Cliente: " . ((string)($ticket['client_name'] ?? '')) . "\n" .
         "Contacto: " . ((string)($ticket['client_contact'] ?? '')) . "\n" .
         "Canal: {$ticket['source_channel']}\n" .

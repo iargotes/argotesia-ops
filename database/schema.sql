@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   closed_at DATETIME NULL DEFAULT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uk_tickets_code (code),
+  UNIQUE KEY uk_tickets_intake_id (intake_id),
   KEY idx_tickets_status (status),
   KEY idx_tickets_assigned_user (assigned_user_id),
   KEY idx_tickets_project (project_id),

@@ -76,6 +76,13 @@ flowchart LR
 13. Solo despues de esa autorizacion una persona puede implementar o autorizar expresamente a Codex.
 14. La salida al cliente permanece deshabilitada operativamente hasta una decision posterior.
 
+Invariantes de administracion:
+
+- Un intake puede tener como maximo un ticket. Reintentar “Crear ticket” abre el existente.
+- Reasignar modifica `assigned_user_id` del mismo ticket y preserva su estado actual.
+- Solo un ticket `nuevo` pasa a `asignado` al recibir su primer responsable.
+- Cambiar estado actualiza el mismo ID y registra estado anterior/nuevo en `ticket_events`.
+
 ## Estados de ticket
 
 | Estado | Significado |

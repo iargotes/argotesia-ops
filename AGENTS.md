@@ -15,6 +15,7 @@
 - PDO y prepared statements.
 - Codex/modelos locales proponen; no implementan sin autorizacion humana.
 - Mantener el flujo auditable: intake -> ticket -> propuesta -> aprobacion -> respuesta.
+- La creacion desde intake debe ser idempotente; asignar o cambiar estado nunca inserta otro ticket.
 - `OPS_API_TOKEN` es solo para integraciones centrales; cada Mac usa su propio `OPS_WORKER_TOKEN`.
 - Telegram es interno y `WHATSAPP_AUTO_REPLY` debe permanecer desactivado en esta fase.
 

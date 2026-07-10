@@ -8,6 +8,7 @@ REMOTE_WEB_DIR="${REMOTE_WEB_DIR:-/home/argotes-ops/htdocs/ops.argotes.com}"
 rsync -az --delete \
   --exclude ".git/" \
   --exclude ".env" \
+  --exclude ".env*.local" \
   --exclude "storage/logs/*" \
   --exclude "storage/cache/*" \
   ./ "$REMOTE:$REMOTE_APP_DIR/"

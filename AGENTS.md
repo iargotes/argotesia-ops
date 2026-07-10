@@ -1,5 +1,10 @@
 # AGENTS.md - ArgotesIA Ops
 
+## Lectura obligatoria
+- Antes de explorar o cambiar codigo, leer `docs/project-context.md` y `docs/api-contract.md`.
+- Verificar `git status`, `origin/main` y la ubicacion real del repo.
+- Mensajes antiguos de Slack no son fuente de verdad si contradicen el codigo o `docs/project-context.md`.
+
 ## Producto
 - Sistema interno para operaciones de soporte de Ivan/Oscar.
 - No es el CRM comercial. Lo que funcione aqui puede replicarse luego.
@@ -10,10 +15,11 @@
 - PDO y prepared statements.
 - Codex/modelos locales proponen; no implementan sin autorizacion humana.
 - Mantener el flujo auditable: intake -> ticket -> propuesta -> aprobacion -> respuesta.
+- `OPS_API_TOKEN` es solo para integraciones centrales; cada Mac usa su propio `OPS_WORKER_TOKEN`.
+- Telegram es interno y `WHATSAPP_AUTO_REPLY` debe permanecer desactivado en esta fase.
 
 ## MVP
 - Intake manual/WhatsApp transcrito.
 - Tickets asignados a Ivan u Oscar.
 - Worker API para agentes locales en Mac.
 - Propuestas tecnicas y respuestas sugeridas al cliente.
-

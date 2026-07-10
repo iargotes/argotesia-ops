@@ -167,16 +167,22 @@ function generate_proposal(array $ticket, string $modelUrl, string $modelName, s
 function build_prompt(array $ticket, string $workerKey): string
 {
     $pathKey = strtolower($workerKey) === 'oscar' ? 'local_path_oscar' : 'local_path_ivan';
-    $path = (string)($ticket[$pathKey] ?? '') !== ''
-        ? (string)$ticket[$pathKey]
-        : 'Ruta local por confirmar';
+    $sshKey = strtolower($workerKey) === 'oscar' ? 'server_ssh_oscar' : 'server_ssh_ivan';
+    $path = trim((string)($ticket['local_path'] ?? $ticket[$pathKey] ?? ''));
+    if ($path === '') {
+        $path = 'Ruta local por confirmar';
+    }
+    $ssh = trim((string)($ticket['server_ssh_target'] ?? $ticket[$sshKey] ?? ''));
+    if ($ssh === '') {
+        $ssh = 'No configurado para ' . $workerKey;
+    }
 
     return trim(
         "Objetivo: diagnosticar y proponer solucion, no implementar.\n\n" .
         "Ticket: {$ticket['code']} - {$ticket['title']}\n" .
         "Proyecto: " . ((string)($ticket['project_name'] ?? 'Por confirmar')) . "\n" .
         "Ruta local: {$path}\n" .
-        "SSH: " . ((string)($ticket['server_ssh'] ?? 'No configurado')) . "\n" .
+        "SSH de {$workerKey}: {$ssh}\n" .
         "Repo: " . ((string)($ticket['repo_url'] ?? 'No configurado')) . "\n" .
         "Alias: " . ((string)($ticket['project_aliases'] ?? 'No configurados')) . "\n" .
         "Reglas: " . ((string)($ticket['codex_rules'] ?? 'No implementar sin aprobacion humana.')) . "\n\n" .

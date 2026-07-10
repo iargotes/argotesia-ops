@@ -42,15 +42,20 @@ if (!is_string($context)) {
     exit(1);
 }
 
+$legacySsh = value_or_null($project['server_ssh'] ?? null);
+$sshIvan = value_or_null($project['server_ssh_ivan'] ?? null);
+$sshOscar = value_or_null($project['server_ssh_oscar'] ?? null);
+
 $stmt = $conn->prepare("
   INSERT INTO projects
-    (project_key, name, client_name, aliases, client_phones, local_path_ivan, local_path_oscar, server_ssh, repo_url, codex_rules, operational_context)
+    (project_key, name, client_name, aliases, client_phones, local_path_ivan, local_path_oscar, server_ssh, server_ssh_ivan, server_ssh_oscar, repo_url, codex_rules, operational_context)
   VALUES
-    (:project_key, :name, :client_name, :aliases, :client_phones, :local_path_ivan, :local_path_oscar, :server_ssh, :repo_url, :codex_rules, :operational_context)
+    (:project_key, :name, :client_name, :aliases, :client_phones, :local_path_ivan, :local_path_oscar, :server_ssh, :server_ssh_ivan, :server_ssh_oscar, :repo_url, :codex_rules, :operational_context)
   ON DUPLICATE KEY UPDATE
     name = VALUES(name), client_name = VALUES(client_name), aliases = VALUES(aliases), client_phones = VALUES(client_phones),
     local_path_ivan = VALUES(local_path_ivan), local_path_oscar = VALUES(local_path_oscar),
-    server_ssh = VALUES(server_ssh), repo_url = VALUES(repo_url), codex_rules = VALUES(codex_rules),
+    server_ssh = COALESCE(VALUES(server_ssh), server_ssh), server_ssh_ivan = VALUES(server_ssh_ivan),
+    server_ssh_oscar = VALUES(server_ssh_oscar), repo_url = VALUES(repo_url), codex_rules = VALUES(codex_rules),
     operational_context = VALUES(operational_context), status = 'active'
 ");
 $stmt->execute([
@@ -61,7 +66,9 @@ $stmt->execute([
     ':client_phones' => $phones ? implode("\n", $phones) : null,
     ':local_path_ivan' => value_or_null($project['local_path_ivan'] ?? null),
     ':local_path_oscar' => value_or_null($project['local_path_oscar'] ?? null),
-    ':server_ssh' => value_or_null($project['server_ssh'] ?? null),
+    ':server_ssh' => $legacySsh,
+    ':server_ssh_ivan' => $sshIvan,
+    ':server_ssh_oscar' => $sshOscar,
     ':repo_url' => value_or_null($project['repo_url'] ?? null),
     ':codex_rules' => $rules !== '' ? $rules : null,
     ':operational_context' => $context,
@@ -75,6 +82,9 @@ echo json_encode([
     'project' => $saved,
     'aliases_count' => count($aliases),
     'phones_count' => count($phones),
+    'warnings' => $legacySsh !== null && $sshIvan === null && $sshOscar === null
+        ? ['server_ssh is legacy and was not assigned; provide server_ssh_ivan/server_ssh_oscar']
+        : [],
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
 
 function value_or_null(mixed $value): ?string

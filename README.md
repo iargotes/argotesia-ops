@@ -138,3 +138,8 @@ Para instalaciones existentes, aplicar `database/migrate_project_context.sql`. L
 ```bash
 php scripts/register-project.php /ruta/proyecto.json
 ```
+
+Aplicar tambien `database/migrate_project_ssh_targets.sql`. Cada ficha debe usar
+`server_ssh_ivan` y `server_ssh_oscar`; se guarda solo un alias SSH o `usuario@host`,
+nunca llaves privadas.
+El campo legado `server_ssh` es ambiguo y no se asigna automaticamente a ningun operador.

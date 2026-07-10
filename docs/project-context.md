@@ -98,8 +98,18 @@ El catalogo central guarda por proyecto:
 - Alias de marca o palabras reconocibles.
 - Telefonos del cliente para clasificacion deterministica sin IA.
 - Ruta local distinta para Ivan y Oscar.
-- Repositorio Git y acceso SSH del servidor, sin credenciales.
+- Repositorio Git y destino SSH distinto para Ivan y Oscar, sin credenciales.
 - Reglas de Codex y contexto operativo completo.
+
+Las fichas se crean y editan desde `Proyectos` en el dashboard. La edicion carga los
+valores actuales, actualiza por ID y permite cambiar estado, telefonos, rutas y destinos
+SSH sin recrear el proyecto.
+
+Los campos correctos son `server_ssh_ivan` y `server_ssh_oscar`. Cada valor puede ser
+un alias definido en `~/.ssh/config` de esa Mac o un `usuario@host`. Ops no guarda
+`IdentityFile`, contenido de llaves, passphrases ni copia destinos entre operadores.
+El API de tareas transforma esos campos en `server_ssh_target` y `local_path` antes de
+responder, y elimina del payload los datos de la otra Mac.
 
 Orden real de resolucion:
 
@@ -114,7 +124,7 @@ Proyectos registrados actualmente:
 | Key | Proyecto | Cliente | Estado |
 |---|---|---|---|
 | `argotesia-ops` | ArgotesIA Ops | ArgotesIA | Activo |
-| `argodrive` | ArgoDrive | Exclusivos Fusagasuga | Activo; alias cargados, telefonos pendientes |
+| `argodrive` | ArgoDrive | Exclusivos Fusagasuga | Activo; SSH Oscar configurado, SSH Ivan y telefonos pendientes |
 
 ## Tokens y secretos
 
@@ -267,6 +277,27 @@ git log -5 --oneline --decorate
 | `scripts/register-project.php` | Registro de fichas JSON de proyectos |
 | `integrations/ai-native-whatsapp/` | FastAPI, Telegram y conector WhatsApp |
 | `docs/api-contract.md` | Contrato estable de integraciones |
+
+Ejemplo seguro de una ficha de proyecto:
+
+```json
+{
+  "server_ssh_ivan": "argodrive-prod-ivan",
+  "server_ssh_oscar": "argodrive-prod-oscar"
+}
+```
+
+Cada alias se resuelve localmente en la Mac correspondiente:
+
+```sshconfig
+Host argodrive-prod-oscar
+  HostName 2.24.119.113
+  User usuario-de-oscar
+  IdentityFile ~/.ssh/llave-de-oscar
+  IdentitiesOnly yes
+```
+
+El archivo `~/.ssh/config` y la llave nunca se copian al repo, dashboard o Slack.
 
 ## Estado actual y siguientes pasos
 

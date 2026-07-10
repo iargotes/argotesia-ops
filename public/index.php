@@ -272,7 +272,30 @@ function random_worker_token(): string
 
 function projects(PDO $conn): array
 {
-    return $conn->query("SELECT * FROM projects WHERE status = 'active' ORDER BY name ASC")->fetchAll();
+    return $conn->query("SELECT * FROM projects ORDER BY FIELD(status, 'active', 'paused', 'archived'), name ASC")->fetchAll();
+}
+
+function project_by_id(PDO $conn, int $id): ?array
+{
+    if ($id <= 0) {
+        return null;
+    }
+    $stmt = $conn->prepare("SELECT * FROM projects WHERE id = :id LIMIT 1");
+    $stmt->execute([':id' => $id]);
+    return $stmt->fetch() ?: null;
+}
+
+function project_key_exists(PDO $conn, string $key, ?int $exceptId = null): bool
+{
+    $sql = "SELECT COUNT(*) FROM projects WHERE project_key = :project_key";
+    $params = [':project_key' => $key];
+    if ($exceptId !== null) {
+        $sql .= " AND id <> :id";
+        $params[':id'] = $exceptId;
+    }
+    $stmt = $conn->prepare($sql);
+    $stmt->execute($params);
+    return (int)$stmt->fetchColumn() > 0;
 }
 
 function generate_ticket_code(PDO $conn, int $ticketId): string
@@ -363,6 +386,24 @@ function user_id_from_worker_key(PDO $conn, ?string $workerKey): ?int
     return $id > 0 ? $id : null;
 }
 
+function worker_project_context(?string $rawContext, string $workerKey, string $localPath, string $sshTarget): ?string
+{
+    $context = json_decode((string)$rawContext, true);
+    if (!is_array($context)) {
+        return null;
+    }
+    foreach ([
+        'local_path_current_machine', 'local_machine_owner', 'local_path_ivan', 'local_path_oscar',
+        'server_ssh', 'server_ssh_ivan', 'server_ssh_oscar',
+    ] as $field) {
+        unset($context[$field]);
+    }
+    $context['local_worker'] = $workerKey;
+    $context['local_path'] = $localPath !== '' ? $localPath : null;
+    $context['server_ssh_target'] = $sshTarget !== '' ? $sshTarget : null;
+    return json_encode($context, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: null;
+}
+
 function existing_intake_response(PDO $conn, string $sourceChannel, string $externalRef): ?array
 {
     if ($externalRef === '') {
@@ -437,7 +478,8 @@ if ($path === '/api/worker/tasks' && $method === 'GET') {
       SELECT
         t.id, t.code, t.title, t.description, t.client_name, t.client_contact,
         t.source_channel, t.intent, t.urgency, t.status, t.client_reply_draft,
-        p.name AS project_name, p.local_path_ivan, p.local_path_oscar, p.server_ssh, p.repo_url, p.codex_rules,
+        p.name AS project_name, p.local_path_ivan, p.local_path_oscar,
+        p.server_ssh, p.server_ssh_ivan, p.server_ssh_oscar, p.repo_url, p.codex_rules,
         p.aliases AS project_aliases, p.operational_context AS project_operational_context
       FROM tickets t
       LEFT JOIN projects p ON p.id = t.project_id
@@ -447,7 +489,30 @@ if ($path === '/api/worker/tasks' && $method === 'GET') {
       LIMIT 10
     ");
     $stmt->execute([':uid' => (int)$worker['id']]);
-    json_response(['ok' => true, 'worker' => $worker['worker_key'], 'tickets' => $stmt->fetchAll()]);
+    $workerKey = (string)$worker['worker_key'];
+    $tickets = $stmt->fetchAll();
+    foreach ($tickets as &$ticket) {
+        $isOscar = $workerKey === 'oscar';
+        $localPath = trim((string)($ticket[$isOscar ? 'local_path_oscar' : 'local_path_ivan'] ?? ''));
+        $sshTarget = trim((string)($ticket[$isOscar ? 'server_ssh_oscar' : 'server_ssh_ivan'] ?? ''));
+        $ticket['local_path'] = $localPath;
+        $ticket['server_ssh_target'] = $sshTarget;
+        $ticket['project_operational_context'] = worker_project_context(
+            $ticket['project_operational_context'] ?? null,
+            $workerKey,
+            $localPath,
+            $sshTarget
+        );
+        unset(
+            $ticket['local_path_ivan'],
+            $ticket['local_path_oscar'],
+            $ticket['server_ssh'],
+            $ticket['server_ssh_ivan'],
+            $ticket['server_ssh_oscar']
+        );
+    }
+    unset($ticket);
+    json_response(['ok' => true, 'worker' => $workerKey, 'tickets' => $tickets]);
 }
 
 if ($path === '/api/worker/updates' && $method === 'GET') {
@@ -1717,40 +1782,58 @@ if ($path === '/tickets/status' && $method === 'POST') {
 
 if ($path === '/projects' && $method === 'GET') {
     $items = projects($conn);
-    layout('Proyectos', $user, function (string $csrf) use ($items) {
+    $editId = max(0, (int)($_GET['edit_id'] ?? 0));
+    $editing = project_by_id($conn, $editId);
+    if ($editId > 0 && $editing === null) {
+        flash_set('error', 'No se encontro el proyecto solicitado.');
+        redirect(url_for('/projects'));
+    }
+    layout('Proyectos', $user, function (string $csrf) use ($items, $editing) {
         ?>
   <div class="row g-3">
     <div class="col-12 col-lg-5">
       <div class="panel p-3">
-        <div class="fw-bold mb-2">Proyecto</div>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="fw-bold"><?= $editing ? 'Editar proyecto' : 'Nuevo proyecto' ?></div>
+          <?php if ($editing): ?><a class="btn btn-outline-secondary btn-sm" href="<?= h(url_for('/projects')) ?>">Cancelar</a><?php endif; ?>
+        </div>
         <form method="post" action="<?= h(url_for('/projects/save')) ?>">
           <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-          <input class="form-control soft mb-2" name="name" required placeholder="Nombre">
-          <input class="form-control soft mb-2" name="project_key" placeholder="clave-proyecto">
-          <input class="form-control soft mb-2" name="client_name" placeholder="Cliente">
-          <textarea class="form-control soft mb-2" name="aliases" rows="2" placeholder="Alias, uno por linea"></textarea>
-          <textarea class="form-control soft mb-2" name="client_phones" rows="2" placeholder="Telefonos del cliente, uno por linea"></textarea>
-          <input class="form-control soft mb-2" name="local_path_ivan" placeholder="Ruta local Ivan">
-          <input class="form-control soft mb-2" name="local_path_oscar" placeholder="Ruta local Oscar">
-          <input class="form-control soft mb-2" name="server_ssh" placeholder="SSH servidor">
-          <input class="form-control soft mb-2" name="repo_url" placeholder="Repo Git">
-          <textarea class="form-control soft mb-2" name="codex_rules" rows="3" placeholder="Reglas Codex"></textarea>
-          <textarea class="form-control soft mb-2 font-monospace" name="operational_context" rows="5" placeholder="Contexto operativo JSON"></textarea>
-          <button class="btn btn-primary">Guardar</button>
+          <input type="hidden" name="id" value="<?= (int)($editing['id'] ?? 0) ?>">
+          <input class="form-control soft mb-2" name="name" required placeholder="Nombre" value="<?= h((string)($editing['name'] ?? '')) ?>">
+          <input class="form-control soft mb-2" name="project_key" placeholder="clave-proyecto" value="<?= h((string)($editing['project_key'] ?? '')) ?>">
+          <input class="form-control soft mb-2" name="client_name" placeholder="Cliente" value="<?= h((string)($editing['client_name'] ?? '')) ?>">
+          <textarea class="form-control soft mb-2" name="aliases" rows="2" placeholder="Alias, uno por linea"><?= h((string)($editing['aliases'] ?? '')) ?></textarea>
+          <textarea class="form-control soft mb-2" name="client_phones" rows="2" placeholder="Telefonos del cliente, uno por linea"><?= h((string)($editing['client_phones'] ?? '')) ?></textarea>
+          <input class="form-control soft mb-2" name="local_path_ivan" placeholder="Ruta local Ivan" value="<?= h((string)($editing['local_path_ivan'] ?? '')) ?>">
+          <input class="form-control soft mb-2" name="local_path_oscar" placeholder="Ruta local Oscar" value="<?= h((string)($editing['local_path_oscar'] ?? '')) ?>">
+          <input class="form-control soft mb-2" name="server_ssh_ivan" placeholder="SSH Ivan: alias o usuario@host" value="<?= h((string)($editing['server_ssh_ivan'] ?? '')) ?>">
+          <input class="form-control soft mb-2" name="server_ssh_oscar" placeholder="SSH Oscar: alias o usuario@host" value="<?= h((string)($editing['server_ssh_oscar'] ?? '')) ?>">
+          <input class="form-control soft mb-2" name="repo_url" placeholder="Repo Git" value="<?= h((string)($editing['repo_url'] ?? '')) ?>">
+          <textarea class="form-control soft mb-2" name="codex_rules" rows="3" placeholder="Reglas Codex"><?= h((string)($editing['codex_rules'] ?? '')) ?></textarea>
+          <textarea class="form-control soft mb-2 font-monospace" name="operational_context" rows="5" placeholder="Contexto operativo JSON"><?= h((string)($editing['operational_context'] ?? '')) ?></textarea>
+          <select class="form-select soft mb-2" name="status">
+            <?php foreach (['active', 'paused', 'archived'] as $status): ?><option value="<?= h($status) ?>" <?= ($editing['status'] ?? 'active') === $status ? 'selected' : '' ?>><?= h($status) ?></option><?php endforeach; ?>
+          </select>
+          <button class="btn btn-primary"><?= $editing ? 'Actualizar' : 'Guardar' ?></button>
         </form>
       </div>
     </div>
     <div class="col-12 col-lg-7">
       <div class="panel p-3">
-        <div class="fw-bold mb-2">Activos</div>
+        <div class="fw-bold mb-2">Catalogo</div>
         <?php foreach ($items as $project): ?>
           <div class="border rounded-3 p-3 mb-2">
-            <strong><?= h((string)$project['name']) ?></strong><div class="small text-muted"><?= h((string)$project['project_key']) ?> · <?= h((string)($project['client_name'] ?? '')) ?></div>
+            <div class="d-flex justify-content-between gap-2">
+              <div><strong><?= h((string)$project['name']) ?></strong><div class="small text-muted"><?= h((string)$project['project_key']) ?> · <?= h((string)($project['client_name'] ?? '')) ?> · <?= h((string)$project['status']) ?></div></div>
+              <a class="btn btn-outline-secondary btn-sm align-self-start" href="<?= h(url_for('/projects')) ?>&edit_id=<?= (int)$project['id'] ?>">Editar</a>
+            </div>
             <?php if (!empty($project['aliases'])): ?><div class="small">Alias: <?= h(str_replace("\n", ', ', (string)$project['aliases'])) ?></div><?php endif; ?>
             <?php if (!empty($project['client_phones'])): ?><div class="small">Telefonos: <?= h(str_replace("\n", ', ', (string)$project['client_phones'])) ?></div><?php endif; ?>
             <div class="small">Ivan: <?= h((string)($project['local_path_ivan'] ?? '-')) ?></div>
             <div class="small">Oscar: <?= h((string)($project['local_path_oscar'] ?? '-')) ?></div>
-            <div class="small">SSH: <?= h((string)($project['server_ssh'] ?? '-')) ?></div>
+            <div class="small">SSH Ivan: <?= h((string)($project['server_ssh_ivan'] ?? '-')) ?></div>
+            <div class="small">SSH Oscar: <?= h((string)($project['server_ssh_oscar'] ?? '-')) ?></div>
           </div>
         <?php endforeach; ?>
       </div>
@@ -1763,23 +1846,29 @@ if ($path === '/projects' && $method === 'GET') {
 
 if ($path === '/projects/save' && $method === 'POST') {
     Security::requireCsrf();
+    $id = max(0, (int)($_POST['id'] ?? 0));
     $name = trim((string)($_POST['name'] ?? ''));
     if ($name === '') {
+        flash_set('error', 'El nombre del proyecto es obligatorio.');
         redirect(url_for('/projects'));
     }
-    $key = trim((string)($_POST['project_key'] ?? ''));
+    $key = strtolower(trim((string)($_POST['project_key'] ?? '')));
     if ($key === '') {
         $key = trim(strtolower((string)preg_replace('/[^a-z0-9]+/i', '-', $name)), '-');
     }
-    $stmt = $conn->prepare("
-      INSERT INTO projects (project_key, name, client_name, aliases, client_phones, local_path_ivan, local_path_oscar, server_ssh, repo_url, codex_rules, operational_context)
-      VALUES (:project_key, :name, :client_name, :aliases, :client_phones, :local_path_ivan, :local_path_oscar, :server_ssh, :repo_url, :codex_rules, :operational_context)
-      ON DUPLICATE KEY UPDATE
-        name = VALUES(name), client_name = VALUES(client_name), aliases = VALUES(aliases), client_phones = VALUES(client_phones), local_path_ivan = VALUES(local_path_ivan),
-        local_path_oscar = VALUES(local_path_oscar), server_ssh = VALUES(server_ssh), repo_url = VALUES(repo_url),
-        codex_rules = VALUES(codex_rules), operational_context = VALUES(operational_context), status = 'active'
-    ");
-    $stmt->execute([
+    if (!preg_match('/^[a-z0-9][a-z0-9-]{0,79}$/', $key)) {
+        flash_set('error', 'La clave debe usar minusculas, numeros y guiones.');
+        redirect(url_for('/projects') . ($id > 0 ? '&edit_id=' . $id : ''));
+    }
+    if (project_key_exists($conn, $key, $id > 0 ? $id : null)) {
+        flash_set('error', 'Ya existe otro proyecto con esa clave.');
+        redirect(url_for('/projects') . ($id > 0 ? '&edit_id=' . $id : ''));
+    }
+    $status = (string)($_POST['status'] ?? 'active');
+    if (!in_array($status, ['active', 'paused', 'archived'], true)) {
+        $status = 'active';
+    }
+    $params = [
       ':project_key' => $key,
       ':name' => $name,
       ':client_name' => trim((string)($_POST['client_name'] ?? '')) ?: null,
@@ -1787,11 +1876,43 @@ if ($path === '/projects/save' && $method === 'POST') {
       ':client_phones' => trim((string)($_POST['client_phones'] ?? '')) ?: null,
       ':local_path_ivan' => trim((string)($_POST['local_path_ivan'] ?? '')) ?: null,
       ':local_path_oscar' => trim((string)($_POST['local_path_oscar'] ?? '')) ?: null,
-      ':server_ssh' => trim((string)($_POST['server_ssh'] ?? '')) ?: null,
+      ':server_ssh_ivan' => trim((string)($_POST['server_ssh_ivan'] ?? '')) ?: null,
+      ':server_ssh_oscar' => trim((string)($_POST['server_ssh_oscar'] ?? '')) ?: null,
       ':repo_url' => trim((string)($_POST['repo_url'] ?? '')) ?: null,
       ':codex_rules' => trim((string)($_POST['codex_rules'] ?? '')) ?: null,
       ':operational_context' => trim((string)($_POST['operational_context'] ?? '')) ?: null,
-    ]);
+      ':status' => $status,
+    ];
+    if ($id > 0) {
+        if (project_by_id($conn, $id) === null) {
+            flash_set('error', 'No se encontro el proyecto solicitado.');
+            redirect(url_for('/projects'));
+        }
+        $stmt = $conn->prepare("
+          UPDATE projects SET
+            project_key = :project_key, name = :name, client_name = :client_name,
+            aliases = :aliases, client_phones = :client_phones,
+            local_path_ivan = :local_path_ivan, local_path_oscar = :local_path_oscar,
+            server_ssh_ivan = :server_ssh_ivan, server_ssh_oscar = :server_ssh_oscar,
+            repo_url = :repo_url, codex_rules = :codex_rules,
+            operational_context = :operational_context, status = :status
+          WHERE id = :id LIMIT 1
+        ");
+        $params[':id'] = $id;
+        $stmt->execute($params);
+        flash_set('success', 'Proyecto actualizado correctamente.');
+    } else {
+        $stmt = $conn->prepare("
+          INSERT INTO projects
+            (project_key, name, client_name, aliases, client_phones, local_path_ivan, local_path_oscar,
+             server_ssh_ivan, server_ssh_oscar, repo_url, codex_rules, operational_context, status)
+          VALUES
+            (:project_key, :name, :client_name, :aliases, :client_phones, :local_path_ivan, :local_path_oscar,
+             :server_ssh_ivan, :server_ssh_oscar, :repo_url, :codex_rules, :operational_context, :status)
+        ");
+        $stmt->execute($params);
+        flash_set('success', 'Proyecto creado correctamente.');
+    }
     redirect(url_for('/projects'));
 }
 

@@ -10,7 +10,7 @@ El worker local:
 
 1. Se autentica en `ops.argotes.com` como `oscar` con su `OPS_WORKER_TOKEN`.
 2. Lee solo tickets asignados a Oscar.
-3. Recibe proyecto, ruta local de Oscar, repo, SSH, reglas y contexto operativo.
+3. Recibe proyecto, `local_path` y `server_ssh_target` ya reducidos para Oscar, repo, reglas y contexto operativo.
 4. Puede enviar el prompt a un modelo local o dejar que Codex prepare una propuesta.
 5. Sube la propuesta al ticket central.
 6. Publica preguntas internas por Telegram cuando falta informacion.
@@ -32,6 +32,14 @@ autorizacion humana.
 Para ArgoDrive, Ops ya tiene configurada la ruta de Oscar como
 `/Users/oscarargote/ROUTIK`. El repo `argotesia-ops` puede estar en cualquier ruta; el
 lanzador calcula su propia ubicacion.
+
+El destino SSH de Oscar es independiente del de Ivan. Ops debe guardar
+`server_ssh_oscar` como alias o `usuario@host`; la llave privada se configura solo en la
+Mac de Oscar mediante `~/.ssh/config`. Si el ticket dice `No configurado para oscar`, no
+se debe reutilizar el usuario SSH de Ivan.
+
+El API no devuelve `local_path_ivan` ni `server_ssh_ivan` al worker de Oscar. Los campos
+genericos `local_path` y `server_ssh_target` siempre corresponden al usuario autenticado.
 
 ## Configuracion inicial
 
@@ -124,7 +132,7 @@ cat /tmp/oscar-tasks.json
 Para el ticket elegido, Codex debe:
 
 1. Confirmar el codigo `OPS-...` y que el ticket esta asignado a Oscar.
-2. Leer `local_path_oscar` y cambiar a ese repo cliente.
+2. Leer `local_path` y cambiar a ese repo cliente.
 3. Leer `AGENTS.md`, README y documentacion propia del proyecto.
 4. Ejecutar `git status` y preservar cambios existentes.
 5. Diagnosticar en modo de solo lectura; puede ejecutar pruebas no destructivas.
@@ -186,6 +194,7 @@ el deploy no fue autorizado tambien.
 | Modelo local vacio | Ollama/modelo no configurado | Completar URL y nombre exacto, o usar modo Codex |
 | Telegram `403` | `TELEGRAM_AGENT_TOKEN` distinto | Sincronizar el token compartido por privado |
 | Submit `403` | Ticket no asignado a Oscar | Reasignar en dashboard antes de subir propuesta |
+| SSH no configurado | Falta `server_ssh_oscar` en el proyecto | Registrar el alias propio de Oscar; no copiar el de Ivan |
 
 ## Definition of done local
 

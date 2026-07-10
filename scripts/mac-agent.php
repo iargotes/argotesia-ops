@@ -94,7 +94,7 @@ if ($command === 'submit') {
 }
 
 if ($command !== 'run') {
-    fwrite(STDERR, "Commands: run (default), tasks, submit, ask, updates.\n");
+    fwrite(STDERR, "Commands: run [OPS-...], tasks, submit, ask, updates.\n");
     exit(1);
 }
 
@@ -118,6 +118,17 @@ if (!($tasks['ok'] ?? false)) {
 }
 
 $tickets = $tasks['tickets'] ?? [];
+$targetTicketCode = strtoupper(trim((string)($argv[2] ?? '')));
+if ($targetTicketCode !== '') {
+    $tickets = array_values(array_filter(
+        $tickets,
+        static fn(array $ticket): bool => strtoupper((string)($ticket['code'] ?? '')) === $targetTicketCode
+    ));
+    if (!$tickets) {
+        fwrite(STDERR, "Ticket {$targetTicketCode} is not available in {$workerKey}'s pending queue.\n");
+        exit(1);
+    }
+}
 if (!$tickets) {
     echo "No tickets assigned to {$workerKey}.\n";
     exit(0);
@@ -161,7 +172,10 @@ foreach ($tickets as $ticket) {
         } catch (RuntimeException $telegramError) {
             fwrite(STDERR, " Telegram notification also failed: {$telegramError->getMessage()}");
         }
-        fwrite(STDERR, "Local model failed for {$ticket['code']}; no proposal uploaded.\n");
+        fwrite(
+            STDERR,
+            "Local model failed for {$ticket['code']}; no proposal uploaded: {$e->getMessage()}\n"
+        );
         continue;
     }
 

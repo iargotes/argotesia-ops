@@ -86,6 +86,12 @@ Este modo sirve para una primera propuesta generada por el modelo local.
 ./scripts/ops-agent-oscar.sh
 ```
 
+Para procesar un solo ticket sin afectar el resto de la cola:
+
+```bash
+./scripts/ops-agent-oscar.sh run OPS-2026-00042
+```
+
 Proceso interno:
 
 1. Consulta `/api/worker/tasks` como Oscar.

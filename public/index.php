@@ -501,6 +501,116 @@ if ($path === '/api/worker/proposals' && $method === 'POST') {
     }
 }
 
+if ($path === '/api/tickets/telegram-actions' && $method === 'POST') {
+    require_integration_token();
+    $input = json_input();
+    $ticketCode = strtoupper(trim((string)($input['ticket_code'] ?? '')));
+    $action = strtolower(trim((string)($input['action'] ?? '')));
+    $body = trim((string)($input['body'] ?? ''));
+    $workerKey = strtolower(trim((string)($input['worker_key'] ?? '')));
+    $telegramUserId = trim((string)($input['telegram_user_id'] ?? ''));
+    $telegramUsername = trim((string)($input['telegram_username'] ?? ''));
+
+    if ($ticketCode === '' || !in_array($action, ['approve', 'reject', 'question', 'answer'], true) || $workerKey === '') {
+        json_response(['ok' => false, 'error' => 'ticket_code/action/worker_key required'], 422);
+    }
+    if (in_array($action, ['question', 'answer', 'reject'], true) && $body === '') {
+        json_response(['ok' => false, 'error' => 'body required for this action'], 422);
+    }
+
+    $actorId = user_id_from_worker_key($conn, $workerKey);
+    if ($actorId === null) {
+        json_response(['ok' => false, 'error' => 'invalid worker_key'], 403);
+    }
+
+    $stmt = $conn->prepare("SELECT id, code, status FROM tickets WHERE code = :code LIMIT 1");
+    $stmt->execute([':code' => $ticketCode]);
+    $ticket = $stmt->fetch();
+    if (!$ticket) {
+        json_response(['ok' => false, 'error' => 'ticket not found'], 404);
+    }
+
+    $ticketId = (int)$ticket['id'];
+    $actorLabel = 'Telegram ' . ($telegramUsername !== '' ? '@' . $telegramUsername : $telegramUserId);
+    $auditBody = trim($actorLabel . ' (' . $workerKey . '). ' . $body);
+
+    if (in_array($action, ['question', 'answer'], true)) {
+        add_event($conn, $ticketId, $actorId, 'telegram_' . $action, mb_substr($auditBody, 0, 4000));
+        json_response([
+            'ok' => true,
+            'action' => $action,
+            'ticket_id' => $ticketId,
+            'ticket_code' => $ticket['code'],
+            'ticket_status' => $ticket['status'],
+        ]);
+    }
+
+    $stmt = $conn->prepare("SELECT id, status FROM ticket_proposals WHERE ticket_id = :ticket_id ORDER BY created_at DESC LIMIT 1");
+    $stmt->execute([':ticket_id' => $ticketId]);
+    $proposal = $stmt->fetch();
+    if (!$proposal) {
+        json_response(['ok' => false, 'error' => 'ticket has no proposal'], 409);
+    }
+
+    $proposalId = (int)$proposal['id'];
+    $proposalStatus = (string)$proposal['status'];
+    if ($action === 'approve' && $proposalStatus === 'approved') {
+        json_response([
+            'ok' => true,
+            'already' => true,
+            'action' => $action,
+            'ticket_id' => $ticketId,
+            'ticket_code' => $ticket['code'],
+            'ticket_status' => $ticket['status'],
+            'proposal_id' => $proposalId,
+        ]);
+    }
+    if ($action === 'reject' && $proposalStatus === 'rejected') {
+        json_response([
+            'ok' => true,
+            'already' => true,
+            'action' => $action,
+            'ticket_id' => $ticketId,
+            'ticket_code' => $ticket['code'],
+            'ticket_status' => $ticket['status'],
+            'proposal_id' => $proposalId,
+        ]);
+    }
+    if ($proposalStatus !== 'ready') {
+        json_response(['ok' => false, 'error' => 'latest proposal is not awaiting decision'], 409);
+    }
+
+    $newProposalStatus = $action === 'approve' ? 'approved' : 'rejected';
+    $newTicketStatus = $action === 'approve' ? 'en_progreso' : 'en_revision';
+    $eventType = $action === 'approve' ? 'implementation_authorized' : 'implementation_rejected';
+    $eventBody = $action === 'approve'
+        ? trim($auditBody . ' Autorizacion explicita para implementar la propuesta #' . $proposalId . '.')
+        : trim($auditBody . ' Propuesta #' . $proposalId . ' rechazada; requiere revision.');
+
+    $conn->beginTransaction();
+    try {
+        $stmt = $conn->prepare("UPDATE ticket_proposals SET status = :proposal_status WHERE id = :id LIMIT 1");
+        $stmt->execute([':proposal_status' => $newProposalStatus, ':id' => $proposalId]);
+        $stmt = $conn->prepare("UPDATE tickets SET status = :ticket_status WHERE id = :id LIMIT 1");
+        $stmt->execute([':ticket_status' => $newTicketStatus, ':id' => $ticketId]);
+        add_event($conn, $ticketId, $actorId, $eventType, mb_substr($eventBody, 0, 4000));
+        $conn->commit();
+    } catch (Throwable $e) {
+        $conn->rollBack();
+        json_response(['ok' => false, 'error' => 'telegram action failed'], 500);
+    }
+
+    json_response([
+        'ok' => true,
+        'action' => $action,
+        'ticket_id' => $ticketId,
+        'ticket_code' => $ticket['code'],
+        'ticket_status' => $newTicketStatus,
+        'proposal_id' => $proposalId,
+        'proposal_status' => $newProposalStatus,
+    ]);
+}
+
 if ($path === '/api/intake/messages' && $method === 'POST') {
     require_integration_token();
     $input = json_input();

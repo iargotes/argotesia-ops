@@ -10,10 +10,14 @@ class Settings(BaseSettings):
     database_url: str = Field(default="sqlite:///./data/ai_ops_center.db", alias="DATABASE_URL")
     telegram_bot_token: str | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
     telegram_admin_chat_id: str | None = Field(default=None, alias="TELEGRAM_ADMIN_CHAT_ID")
+    telegram_webhook_secret: str | None = Field(default=None, alias="TELEGRAM_WEBHOOK_SECRET")
+    telegram_user_worker_map: str | None = Field(default=None, alias="TELEGRAM_USER_WORKER_MAP")
+    telegram_agent_token: str | None = Field(default=None, alias="TELEGRAM_AGENT_TOKEN")
     whatsapp_webhook_secret: str | None = Field(default=None, alias="WHATSAPP_WEBHOOK_SECRET")
     whatsapp_allowed_senders: str | None = Field(default=None, alias="WHATSAPP_ALLOWED_SENDERS")
     whatsapp_auto_reply: bool = Field(default=False, alias="WHATSAPP_AUTO_REPLY")
     ops_intake_url: str | None = Field(default=None, alias="OPS_INTAKE_URL")
+    ops_ticket_actions_url: str | None = Field(default=None, alias="OPS_TICKET_ACTIONS_URL")
     ops_api_token: str | None = Field(default=None, alias="OPS_API_TOKEN")
     ops_project_key: str | None = Field(default=None, alias="OPS_PROJECT_KEY")
     ops_assigned_worker_key: str | None = Field(default=None, alias="OPS_ASSIGNED_WORKER_KEY")
@@ -33,6 +37,17 @@ class Settings(BaseSettings):
             for sender in self.whatsapp_allowed_senders.split(",")
             if sender.strip()
         }
+
+    @property
+    def telegram_workers_by_user(self) -> dict[str, str]:
+        if not self.telegram_user_worker_map:
+            return {}
+        pairs: dict[str, str] = {}
+        for item in self.telegram_user_worker_map.split(','):
+            user_id, separator, worker_key = item.partition(':')
+            if separator and user_id.strip() and worker_key.strip():
+                pairs[user_id.strip()] = worker_key.strip().lower()
+        return pairs
 
 
 @lru_cache

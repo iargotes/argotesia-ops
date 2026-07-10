@@ -223,6 +223,35 @@ Registra un evento en el ticket indicando que la respuesta fue enviada por la in
 | 503 | `OPS_API_TOKEN` no esta configurado en el servidor. |
 | 500 | Error guardando intake/ticket. |
 
+## Control interno desde Telegram
+
+`POST /api/tickets/telegram-actions`
+
+Endpoint interno usado por el bot de Telegram. Requiere el mismo `OPS_API_TOKEN` y
+registra todas las acciones en `ticket_events`. No envia mensajes al cliente.
+
+Request:
+
+```json
+{
+  "ticket_code": "OPS-2026-00042",
+  "action": "approve",
+  "worker_key": "ivan",
+  "body": "Autorizo implementar la propuesta revisada.",
+  "telegram_user_id": "123456789",
+  "telegram_username": "ivan"
+}
+```
+
+Acciones permitidas:
+
+- `question`: pregunta del agente o Codex.
+- `answer`: respuesta interna de Ivan/Oscar.
+- `approve`: marca la ultima propuesta `ready` como `approved` y el ticket como `en_progreso`.
+- `reject`: marca la ultima propuesta `ready` como `rejected` y el ticket como `en_revision`.
+
+`approve` exige una propuesta lista; no autoriza una implementacion inexistente.
+
 ## Reglas operativas
 
 - `external_ref` debe ser unico por mensaje/audio. Ejemplo recomendado: `whatsapp:<phone>:<message_id>`.

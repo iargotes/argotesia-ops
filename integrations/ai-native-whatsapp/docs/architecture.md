@@ -16,7 +16,9 @@ Cliente
   -> Clasificador IA
   -> Repositorios de datos
   -> Notificador Telegram
-  -> Oscar revisa y decide
+  -> Ivan/Oscar preguntan o autorizan
+  -> Evento registrado en ArgotesIA Ops
+  -> Codex continua solo con autorizacion explicita
 ```
 
 ## Modulos iniciales
@@ -58,6 +60,10 @@ Responsable de clasificar proyecto, categoria, prioridad y resumen. Debe existir
 ### Telegram Notification Service
 
 Responsable de enviar a Oscar un resumen interno de la incidencia.
+
+Telegram tambien recibe preguntas del agente/Codex y comandos explicitos de control.
+El dashboard sigue siendo la fuente de verdad: cada respuesta, rechazo o autorizacion
+se registra como evento del ticket antes de confirmar la accion en Telegram.
 
 ### Repositories
 

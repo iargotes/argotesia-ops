@@ -160,12 +160,40 @@ Configurar estas variables en el entorno del servicio:
 ```env
 OPS_INTAKE_URL=https://ops.argotes.com/index.php?r=%2Fapi%2Fintake%2Fmessages
 OPS_API_TOKEN=<token entregado por Ivan por canal seguro>
+OPS_TICKET_ACTIONS_URL=https://ops.argotes.com/index.php?r=%2Fapi%2Ftickets%2Ftelegram-actions
 OPS_CREATE_TICKET=true
 WHATSAPP_AUTO_REPLY=false
+TELEGRAM_BOT_TOKEN=<token del bot interno>
+TELEGRAM_ADMIN_CHAT_ID=<chat interno>
+TELEGRAM_WEBHOOK_SECRET=<secreto del webhook>
+TELEGRAM_USER_WORKER_MAP=<telegram_user_id>:ivan,<telegram_user_id>:oscar
+TELEGRAM_AGENT_TOKEN=<token para preguntas del agente>
 ```
 
-El flujo no consume el outbox ni envia respuestas a clientes. La respuesta queda
-bloqueada hasta que se implemente y autorice explicitamente ese canal.
+El flujo no consume el outbox ni envia respuestas a clientes. Para control interno:
+
+```text
+/aprobar OPS-2026-00042
+/rechazar OPS-2026-00042 motivo
+/responder OPS-2026-00042 texto para el agente
+```
+
+Los botones de autorizar/rechazar solo funcionan para propuestas listas y para usuarios
+incluidos en `TELEGRAM_USER_WORKER_MAP`.
+
+El agente puede abrir una pregunta interna con:
+
+```bash
+curl -sS -X POST https://ainative.argotes.com/internal/telegram/questions \
+  -H 'Authorization: Bearer <TELEGRAM_AGENT_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "ticket_code": "OPS-2026-00042",
+    "question": "Necesito autorizacion para aplicar la propuesta revisada.",
+    "worker_key": "ivan",
+    "authorization_required": true
+  }'
+```
 
 ## Siguiente paso recomendado
 

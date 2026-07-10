@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.health import router as health_router
+from app.api.telegram import router as telegram_router
 from app.api.webhooks import router as webhooks_router
 from app.core.database import Base, engine
 from app import models  # noqa: F401
@@ -16,6 +17,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(health_router)
     app.include_router(webhooks_router)
+    app.include_router(telegram_router)
     return app
 
 

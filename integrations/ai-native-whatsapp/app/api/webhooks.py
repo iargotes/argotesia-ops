@@ -37,7 +37,12 @@ async def whatsapp_webhook(payload: dict[str, Any], db: Session = Depends(get_db
     except OpsIntakeError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
-    await TelegramNotificationService().notify_incident(normalized, incident, classification)
+    await TelegramNotificationService().notify_incident(
+        normalized,
+        incident,
+        classification,
+        ops_ticket_code=ops_result.get('ticket_code') if ops_result else None,
+    )
 
     return WebhookResponse(
         status="accepted",

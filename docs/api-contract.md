@@ -252,6 +252,39 @@ Acciones permitidas:
 
 `approve` exige una propuesta lista; no autoriza una implementacion inexistente.
 
+## Puente local del agente
+
+El worker de cada Mac usa su `worker_token` para leer tareas y actualizaciones. No se
+comparte el token de Ivan con Oscar.
+
+`GET /api/worker/updates?since_id=0&limit=50`
+
+Devuelve respuestas de Telegram y decisiones humanas para tickets asignados al worker:
+
+```json
+{
+  "ok": true,
+  "worker": "ivan",
+  "since_id": 0,
+  "next_since_id": 17,
+  "events": [
+    {
+      "id": 17,
+      "ticket_id": 42,
+      "ticket_code": "OPS-2026-00042",
+      "event_type": "telegram_answer",
+      "body": "Telegram @ivan (ivan). Revisa tambien los logs del VPS.",
+      "created_at": "2026-07-09 21:10:00"
+    }
+  ]
+}
+```
+
+El comando local `php scripts/mac-agent.php ask ...` llama a
+`POST https://ainative.argotes.com/internal/telegram/questions` con un
+`TELEGRAM_AGENT_TOKEN`. El agente publica la pregunta, Telegram registra la respuesta
+en el ticket y el worker la recoge con `worker/updates`.
+
 ## Reglas operativas
 
 - `external_ref` debe ser unico por mensaje/audio. Ejemplo recomendado: `whatsapp:<phone>:<message_id>`.

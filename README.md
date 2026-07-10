@@ -29,6 +29,8 @@ Esta carpeta no reemplaza la aplicacion PHP ni su base de datos.
 
 ## Worker local
 
+El worker local es el puente entre Ops, el modelo local y Codex. Se instala con el mismo codigo en las dos Macs; solo cambian `OPS_WORKER_KEY`, `OPS_WORKER_TOKEN`, las rutas de proyectos y el modelo local.
+
 ```bash
 OPS_BASE_URL=http://127.0.0.1:8090 \
 OPS_WORKER_KEY=ivan \
@@ -37,6 +39,27 @@ php scripts/mac-agent.php
 ```
 
 El agente lee tickets asignados, genera una propuesta local inicial y la sube al dashboard. Si hay un modelo local HTTP compatible con Ollama, configurar `LOCAL_MODEL_URL`.
+
+Para que Codex o el agente hagan una pregunta interna:
+
+```bash
+OPS_BASE_URL=https://ops.argotes.com \
+OPS_WORKER_KEY=ivan \
+TELEGRAM_AGENT_TOKEN=<token interno> \
+php scripts/mac-agent.php ask OPS-2026-00042 "Necesito confirmar el alcance antes de proponer cambios." \
+  --authorize
+```
+
+Para leer respuestas y autorizaciones nuevas:
+
+```bash
+OPS_BASE_URL=https://ops.argotes.com \
+OPS_WORKER_KEY=ivan \
+OPS_WORKER_TOKEN=<worker token> \
+php scripts/mac-agent.php updates 0
+```
+
+El siguiente empaquetado será un `.app` con LaunchAgent para ejecutar este worker en segundo plano. Primero validamos uno o dos tickets con el CLI; el `.app` será la misma lógica con una bandeja, logs y configuración local.
 
 ## Deploy
 

@@ -449,6 +449,35 @@ if ($path === '/api/worker/tasks' && $method === 'GET') {
     json_response(['ok' => true, 'worker' => $worker['worker_key'], 'tickets' => $stmt->fetchAll()]);
 }
 
+if ($path === '/api/worker/updates' && $method === 'GET') {
+    $worker = worker_from_request($conn);
+    $sinceId = max(0, (int)($_GET['since_id'] ?? 0));
+    $limit = max(1, min(100, (int)($_GET['limit'] ?? 50)));
+    $stmt = $conn->prepare(
+        "SELECT te.id, t.id AS ticket_id, t.code AS ticket_code, te.event_type, te.body, te.created_at
+         FROM ticket_events te
+         INNER JOIN tickets t ON t.id = te.ticket_id
+         WHERE t.assigned_user_id = :uid
+           AND te.id > :since_id
+           AND te.event_type IN ('telegram_answer','implementation_authorized','implementation_rejected')
+         ORDER BY te.id ASC
+         LIMIT {$limit}"
+    );
+    $stmt->execute([':uid' => (int)$worker['id'], ':since_id' => $sinceId]);
+    $events = $stmt->fetchAll();
+    $nextSinceId = $sinceId;
+    foreach ($events as $event) {
+        $nextSinceId = max($nextSinceId, (int)$event['id']);
+    }
+    json_response([
+        'ok' => true,
+        'worker' => $worker['worker_key'],
+        'since_id' => $sinceId,
+        'next_since_id' => $nextSinceId,
+        'events' => $events,
+    ]);
+}
+
 if ($path === '/api/worker/proposals' && $method === 'POST') {
     $worker = worker_from_request($conn);
     $input = json_decode(file_get_contents('php://input') ?: '{}', true);

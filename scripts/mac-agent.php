@@ -1,11 +1,57 @@
 <?php
 declare(strict_types=1);
 
+$command = strtolower(trim((string)($argv[1] ?? 'run')));
 $baseUrl = rtrim(getenv('OPS_BASE_URL') ?: 'http://127.0.0.1:8090', '/');
 $workerKey = getenv('OPS_WORKER_KEY') ?: 'ivan';
 $token = getenv('OPS_WORKER_TOKEN') ?: '';
 $modelUrl = getenv('LOCAL_MODEL_URL') ?: '';
 $modelName = getenv('LOCAL_MODEL_NAME') ?: 'local-template';
+
+if ($command === 'ask') {
+    $ticketCode = strtoupper(trim((string)($argv[2] ?? '')));
+    $question = trim((string)($argv[3] ?? ''));
+    $telegramUrl = rtrim(getenv('TELEGRAM_AGENT_URL') ?: 'https://ainative.argotes.com', '/') . '/internal/telegram/questions';
+    $telegramToken = getenv('TELEGRAM_AGENT_TOKEN') ?: '';
+    $authorizationRequired = in_array('--authorize', $argv, true);
+    if ($ticketCode === '' || $question === '' || $telegramToken === '') {
+        fwrite(STDERR, "Usage: php scripts/mac-agent.php ask OPS-2026-00042 \"pregunta\" [--authorize]\n");
+        exit(1);
+    }
+
+    $response = api_post($telegramUrl, $telegramToken, [
+        'ticket_code' => $ticketCode,
+        'question' => $question,
+        'worker_key' => $workerKey,
+        'authorization_required' => $authorizationRequired,
+    ]);
+    if (!($response['ok'] ?? false)) {
+        fwrite(STDERR, "Could not send Telegram question: " . json_encode($response) . "\n");
+        exit(1);
+    }
+    echo "Telegram question sent for {$ticketCode}.\n";
+    exit(0);
+}
+
+if ($command === 'updates') {
+    if ($token === '') {
+        fwrite(STDERR, "OPS_WORKER_TOKEN is required.\n");
+        exit(1);
+    }
+    $sinceId = max(0, (int)($argv[2] ?? 0));
+    $updates = api_get(
+        $baseUrl . '/index.php?r=' . rawurlencode('/api/worker/updates') .
+        '&worker_key=' . urlencode($workerKey) . '&since_id=' . $sinceId,
+        $token
+    );
+    echo json_encode($updates, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
+    exit(($updates['ok'] ?? false) ? 0 : 1);
+}
+
+if ($command !== 'run') {
+    fwrite(STDERR, "Commands: run (default), ask, updates.\n");
+    exit(1);
+}
 
 if ($token === '') {
     fwrite(STDERR, "OPS_WORKER_TOKEN is required.\n");

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.argotesia.ops-agent.ivan</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/iargote/projects/Tec/argotesia-ops/scripts/ops-agent-ivan.sh</string>
+    <string>run</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/iargote/projects/Tec/argotesia-ops</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>60</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/argotesia-ops-agent-ivan.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/argotesia-ops-agent-ivan.err.log</string>
+</dict>
+</plist>

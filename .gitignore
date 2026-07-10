@@ -1,7 +1,9 @@
 .env
+.env.*.local
+launchd/*.plist
+!launchd/*.plist.example
 /storage/logs/*
 /storage/cache/*
 .DS_Store
 .idea/
 .vscode/
-

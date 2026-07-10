@@ -61,6 +61,41 @@ php scripts/mac-agent.php updates 0
 
 El siguiente empaquetado será un `.app` con LaunchAgent para ejecutar este worker en segundo plano. Primero validamos uno o dos tickets con el CLI; el `.app` será la misma lógica con una bandeja, logs y configuración local.
 
+### Configuracion local de Ivan
+
+Esta Mac ya tiene PHP CLI y Ollama con `gemma4:12b`. Crear el archivo privado de configuracion:
+
+```bash
+cp .env.ivan.local.example .env.ivan.local
+chmod +x scripts/ops-agent-ivan.sh
+```
+
+Completar solo en `.env.ivan.local`:
+
+```env
+OPS_WORKER_TOKEN=<token privado de Ivan>
+TELEGRAM_AGENT_TOKEN=<token interno>
+```
+
+Validar primero sin cargar el agente en segundo plano:
+
+```bash
+./scripts/ops-agent-ivan.sh updates 0
+./scripts/ops-agent-ivan.sh
+```
+
+Cuando el flujo esté probado, instalar el ejecutor cada 60 segundos:
+
+```bash
+mkdir -p "$HOME/Library/LaunchAgents"
+cp launchd/com.argotesia.ops-agent.ivan.plist.example \
+  "$HOME/Library/LaunchAgents/com.argotesia.ops-agent.ivan.plist"
+launchctl bootstrap "gui/$(id -u)" \
+  "$HOME/Library/LaunchAgents/com.argotesia.ops-agent.ivan.plist"
+```
+
+El archivo `.env.ivan.local` y el plist instalado quedan fuera de Git. Oscar usara la misma estructura con `OPS_WORKER_KEY=oscar` y su propio `OPS_WORKER_TOKEN`.
+
 ## Deploy
 
 El deploy sube el codigo privado a `/home/argotes-ops/app` y publica solo el webroot en `/home/argotes-ops/htdocs/ops.argotes.com`.

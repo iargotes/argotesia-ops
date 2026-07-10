@@ -1,6 +1,8 @@
 from app.config import get_settings
 from app.core.schemas import NormalizedMessage
 
+SUPPORTED_MESSAGE_TYPES = {"chat", "ptt", "audio"}
+
 
 class WhatsAppMessageFilter:
     def __init__(self) -> None:
@@ -10,8 +12,8 @@ class WhatsAppMessageFilter:
         if message.raw_payload.get("chatType") not in {None, "direct"}:
             return False, "Mensaje ignorado porque no es chat directo."
 
-        if message.message_type != "chat":
-            return False, "Mensaje ignorado porque no es texto tipo chat."
+        if message.message_type not in SUPPORTED_MESSAGE_TYPES:
+            return False, "Mensaje ignorado porque no es texto ni audio compatible."
 
         allowed_senders = self.settings.allowed_whatsapp_senders
         if not allowed_senders:

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.schemas import WebhookResponse
 from app.core.security import verify_whatsapp_secret
+from app.services.audio_transcription import AudioTranscriptionError, AudioTranscriptionService
 from app.services.telegram_notify import TelegramNotificationService
 from app.services.ops_intake import OpsIntakeError, OpsIntakeService
 from app.services.whatsapp_ingestion import IgnoredWhatsAppMessage, WhatsAppIngestionService
@@ -20,6 +21,30 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 )
 async def whatsapp_webhook(payload: dict[str, Any], db: Session = Depends(get_db)) -> WebhookResponse:
     service = WhatsAppIngestionService(db)
+    if AudioTranscriptionService.is_audio_payload(payload):
+        try:
+            preliminary = service.normalizer.normalize(payload)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+        should_process, reason = service.filter.should_process(preliminary)
+        if not should_process:
+            return WebhookResponse(
+                status="ignored",
+                message_id=preliminary.message_id,
+                reason=reason,
+                reply_to_customer=None,
+            )
+        try:
+            payload, _transcription = await AudioTranscriptionService().transcribe_payload(payload)
+        except AudioTranscriptionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from exc
+
     try:
         normalized, _db_message, classification, incident = service.process(payload)
     except IgnoredWhatsAppMessage as exc:

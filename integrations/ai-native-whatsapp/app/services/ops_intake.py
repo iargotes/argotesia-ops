@@ -30,7 +30,7 @@ class OpsIntakeService:
             raise OpsIntakeError("WhatsApp message has no transcript text.")
 
         payload: dict[str, Any] = {
-            "source_channel": "whatsapp",
+            "source_channel": "audio" if message.message_type in {"ptt", "audio"} else "whatsapp",
             "external_ref": f"whatsapp:{message.sender}:{message.message_id}",
             "client_name": message.contact_name,
             "client_contact": message.sender,
@@ -44,6 +44,16 @@ class OpsIntakeService:
             "received_at": message.received_at.isoformat(),
             "create_ticket": self.settings.ops_create_ticket,
         }
+
+        if message.message_type in {"ptt", "audio"}:
+            media = message.raw_payload.get("media")
+            transcription = message.raw_payload.get("transcription")
+            payload["audio"] = {
+                "mime_type": media.get("mimetype") if isinstance(media, dict) else None,
+                "duration_seconds": (
+                    transcription.get("duration_seconds") if isinstance(transcription, dict) else None
+                ),
+            }
 
         if self.settings.ops_project_key:
             payload["project_key"] = self.settings.ops_project_key

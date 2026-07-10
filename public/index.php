@@ -1445,10 +1445,14 @@ if ($path === '/') {
 
 if ($path === '/intake' && $method === 'GET') {
     $stmt = $conn->query("
-      SELECT i.*, p.name AS project_name, u.name AS assigned_name
+      SELECT i.*, p.name AS project_name, u.name AS assigned_name,
+             t.id AS ticket_id, t.code AS ticket_code
       FROM intake_items i
       LEFT JOIN projects p ON p.id = i.project_id
       LEFT JOIN users u ON u.id = i.assigned_user_id
+      LEFT JOIN tickets t ON t.id = (
+        SELECT MIN(existing_ticket.id) FROM tickets existing_ticket WHERE existing_ticket.intake_id = i.id
+      )
       ORDER BY i.created_at DESC
       LIMIT 50
     ");
@@ -1504,7 +1508,11 @@ if ($path === '/intake' && $method === 'GET') {
             <?php if (!empty($item['ai_summary'])): ?><pre class="mono bg-light p-2 rounded mt-2"><?= h((string)$item['ai_summary']) ?></pre><?php endif; ?>
             <div class="d-flex gap-2 mt-2">
               <form method="post" action="<?= h(url_for('/intake/classify')) ?>"><input type="hidden" name="_csrf" value="<?= h($csrf) ?>"><input type="hidden" name="id" value="<?= (int)$item['id'] ?>"><button class="btn btn-outline-primary btn-sm">Clasificar</button></form>
-              <form method="post" action="<?= h(url_for('/intake/create-ticket')) ?>"><input type="hidden" name="_csrf" value="<?= h($csrf) ?>"><input type="hidden" name="id" value="<?= (int)$item['id'] ?>"><button class="btn btn-success btn-sm" <?= $item['status'] === 'ticket_creado' ? 'disabled' : '' ?>>Crear ticket</button></form>
+              <?php if (!empty($item['ticket_id'])): ?>
+                <a class="btn btn-outline-success btn-sm" href="<?= h(url_for('/tickets/view')) ?>&id=<?= (int)$item['ticket_id'] ?>">Abrir <?= h((string)$item['ticket_code']) ?></a>
+              <?php else: ?>
+                <form method="post" action="<?= h(url_for('/intake/create-ticket')) ?>"><input type="hidden" name="_csrf" value="<?= h($csrf) ?>"><input type="hidden" name="id" value="<?= (int)$item['id'] ?>"><button class="btn btn-success btn-sm">Crear ticket</button></form>
+              <?php endif; ?>
             </div>
           </div>
         <?php endforeach; ?>
@@ -1595,44 +1603,72 @@ if ($path === '/intake/classify' && $method === 'POST') {
 if ($path === '/intake/create-ticket' && $method === 'POST') {
     Security::requireCsrf();
     $id = (int)($_POST['id'] ?? 0);
-    $stmt = $conn->prepare("SELECT * FROM intake_items WHERE id = :id LIMIT 1");
-    $stmt->execute([':id' => $id]);
-    $item = $stmt->fetch();
-    if (!$item) {
+    if ($id <= 0) {
+        flash_set('error', 'Intake invalido.');
         redirect(url_for('/intake'));
     }
 
-    $status = !empty($item['assigned_user_id']) ? 'asignado' : 'nuevo';
-    $description = "Resumen IA:\n" . (string)$item['ai_summary'] . "\n\nPrompt Codex:\n" . (string)$item['codex_prompt'] . "\n\nTranscripcion:\n" . (string)$item['transcript'];
-    $stmt = $conn->prepare("
-      INSERT INTO tickets
-        (intake_id, project_id, assigned_user_id, title, description, client_name, client_contact,
-         source_channel, intent, urgency, status, client_reply_draft, created_by_user_id)
-      VALUES
-        (:intake_id, :project_id, :assigned_user_id, :title, :description, :client_name, :client_contact,
-         :source_channel, :intent, :urgency, :status, :client_reply_draft, :created_by)
-    ");
-    $stmt->execute([
-      ':intake_id' => $id,
-      ':project_id' => $item['project_id'],
-      ':assigned_user_id' => $item['assigned_user_id'],
-      ':title' => $item['title'],
-      ':description' => $description,
-      ':client_name' => $item['client_name'],
-      ':client_contact' => $item['client_contact'],
-      ':source_channel' => $item['source_channel'],
-      ':intent' => $item['detected_intent'],
-      ':urgency' => $item['urgency'],
-      ':status' => $status,
-      ':client_reply_draft' => $item['client_reply_draft'],
-      ':created_by' => (int)$user['id'],
-    ]);
-    $ticketId = (int)$conn->lastInsertId();
-    generate_ticket_code($conn, $ticketId);
-    add_event($conn, $ticketId, (int)$user['id'], 'ticket_created', 'Ticket creado desde intake.');
+    $conn->beginTransaction();
+    try {
+        $stmt = $conn->prepare("SELECT * FROM intake_items WHERE id = :id LIMIT 1 FOR UPDATE");
+        $stmt->execute([':id' => $id]);
+        $item = $stmt->fetch();
+        if (!$item) {
+            $conn->rollBack();
+            flash_set('error', 'No se encontro el intake solicitado.');
+            redirect(url_for('/intake'));
+        }
 
-    $stmt = $conn->prepare("UPDATE intake_items SET status = 'ticket_creado' WHERE id = :id LIMIT 1");
-    $stmt->execute([':id' => $id]);
+        $stmt = $conn->prepare("SELECT id, code FROM tickets WHERE intake_id = :intake_id ORDER BY id ASC LIMIT 1");
+        $stmt->execute([':intake_id' => $id]);
+        $existing = $stmt->fetch();
+        if ($existing) {
+            $stmt = $conn->prepare("UPDATE intake_items SET status = 'ticket_creado' WHERE id = :id LIMIT 1");
+            $stmt->execute([':id' => $id]);
+            $conn->commit();
+            flash_set('info', 'Este intake ya tiene el ticket ' . (string)$existing['code'] . '.');
+            redirect(url_for('/tickets/view') . '&id=' . (int)$existing['id']);
+        }
+
+        $status = !empty($item['assigned_user_id']) ? 'asignado' : 'nuevo';
+        $description = "Resumen IA:\n" . (string)$item['ai_summary'] . "\n\nPrompt Codex:\n" . (string)$item['codex_prompt'] . "\n\nTranscripcion:\n" . (string)$item['transcript'];
+        $stmt = $conn->prepare("
+          INSERT INTO tickets
+            (intake_id, project_id, assigned_user_id, title, description, client_name, client_contact,
+             source_channel, intent, urgency, status, client_reply_draft, created_by_user_id)
+          VALUES
+            (:intake_id, :project_id, :assigned_user_id, :title, :description, :client_name, :client_contact,
+             :source_channel, :intent, :urgency, :status, :client_reply_draft, :created_by)
+        ");
+        $stmt->execute([
+          ':intake_id' => $id,
+          ':project_id' => $item['project_id'],
+          ':assigned_user_id' => $item['assigned_user_id'],
+          ':title' => $item['title'],
+          ':description' => $description,
+          ':client_name' => $item['client_name'],
+          ':client_contact' => $item['client_contact'],
+          ':source_channel' => $item['source_channel'],
+          ':intent' => $item['detected_intent'],
+          ':urgency' => $item['urgency'],
+          ':status' => $status,
+          ':client_reply_draft' => $item['client_reply_draft'],
+          ':created_by' => (int)$user['id'],
+        ]);
+        $ticketId = (int)$conn->lastInsertId();
+        generate_ticket_code($conn, $ticketId);
+        add_event($conn, $ticketId, (int)$user['id'], 'ticket_created', 'Ticket creado desde intake.');
+
+        $stmt = $conn->prepare("UPDATE intake_items SET status = 'ticket_creado' WHERE id = :id LIMIT 1");
+        $stmt->execute([':id' => $id]);
+        $conn->commit();
+    } catch (Throwable $e) {
+        if ($conn->inTransaction()) {
+            $conn->rollBack();
+        }
+        flash_set('error', 'No se pudo crear el ticket.');
+        redirect(url_for('/intake'));
+    }
     redirect(url_for('/tickets/view') . '&id=' . $ticketId);
 }
 
@@ -1760,9 +1796,36 @@ if ($path === '/tickets/assign' && $method === 'POST') {
     Security::requireCsrf();
     $id = (int)($_POST['id'] ?? 0);
     $assignedUserId = (int)($_POST['assigned_user_id'] ?? 0);
-    $stmt = $conn->prepare("UPDATE tickets SET assigned_user_id = :assigned_user_id, status = 'asignado' WHERE id = :id LIMIT 1");
-    $stmt->execute([':assigned_user_id' => $assignedUserId ?: null, ':id' => $id]);
-    add_event($conn, $id, (int)$user['id'], 'assigned', 'Ticket asignado.');
+    $stmt = $conn->prepare("
+      SELECT t.status, t.assigned_user_id, u.name AS assigned_name
+      FROM tickets t
+      LEFT JOIN users u ON u.id = t.assigned_user_id
+      WHERE t.id = :id
+      LIMIT 1
+    ");
+    $stmt->execute([':id' => $id]);
+    $ticket = $stmt->fetch();
+    $stmt = $conn->prepare("SELECT id, name FROM users WHERE id = :id AND status = 'active' LIMIT 1");
+    $stmt->execute([':id' => $assignedUserId]);
+    $target = $stmt->fetch();
+    if (!$ticket || !$target) {
+        flash_set('error', 'Ticket o usuario de asignacion invalido.');
+        redirect(url_for('/tickets/view') . '&id=' . $id);
+    }
+
+    $oldStatus = (string)$ticket['status'];
+    $newStatus = $oldStatus === 'nuevo' ? 'asignado' : $oldStatus;
+    $stmt = $conn->prepare("UPDATE tickets SET assigned_user_id = :assigned_user_id, status = :status WHERE id = :id LIMIT 1");
+    $stmt->execute([':assigned_user_id' => (int)$target['id'], ':status' => $newStatus, ':id' => $id]);
+    $from = trim((string)($ticket['assigned_name'] ?? '')) ?: 'Sin asignar';
+    add_event(
+        $conn,
+        $id,
+        (int)$user['id'],
+        'assigned',
+        'Asignacion actualizada de ' . $from . ' a ' . (string)$target['name'] . '. Estado: ' . $newStatus . '.'
+    );
+    flash_set('success', 'Asignacion actualizada sin crear otro ticket.');
     redirect(url_for('/tickets/view') . '&id=' . $id);
 }
 
@@ -1772,11 +1835,26 @@ if ($path === '/tickets/status' && $method === 'POST') {
     $status = (string)($_POST['status'] ?? 'nuevo');
     $valid = ['nuevo','asignado','en_propuesta','en_revision','aprobado','en_progreso','resuelto','cerrado','descartado'];
     if (!in_array($status, $valid, true)) {
-        $status = 'nuevo';
+        flash_set('error', 'Estado invalido.');
+        redirect(url_for('/tickets/view') . '&id=' . $id);
     }
-    $stmt = $conn->prepare("UPDATE tickets SET status = :status, closed_at = IF(:status2 IN ('cerrado','descartado'), NOW(), closed_at) WHERE id = :id LIMIT 1");
+    $stmt = $conn->prepare("SELECT status FROM tickets WHERE id = :id LIMIT 1");
+    $stmt->execute([':id' => $id]);
+    $oldStatus = $stmt->fetchColumn();
+    if (!is_string($oldStatus)) {
+        flash_set('error', 'No se encontro el ticket solicitado.');
+        redirect(url_for('/tickets'));
+    }
+    $stmt = $conn->prepare("
+      UPDATE tickets
+      SET status = :status,
+          closed_at = CASE WHEN :status2 IN ('cerrado','descartado') THEN COALESCE(closed_at, NOW()) ELSE NULL END
+      WHERE id = :id
+      LIMIT 1
+    ");
     $stmt->execute([':status' => $status, ':status2' => $status, ':id' => $id]);
-    add_event($conn, $id, (int)$user['id'], 'status_changed', 'Estado actualizado a ' . $status . '.');
+    add_event($conn, $id, (int)$user['id'], 'status_changed', 'Estado actualizado de ' . $oldStatus . ' a ' . $status . '.');
+    flash_set('success', 'Estado actualizado sin crear otro ticket.');
     redirect(url_for('/tickets/view') . '&id=' . $id);
 }
 

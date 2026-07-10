@@ -2,6 +2,9 @@
 
 Sistema interno para Ivan/Oscar: intake de WhatsApp/manual, tickets operativos, asignacion, propuestas por modelos locales/Codex y aprobacion humana.
 
+La administracion de tickets es idempotente: un intake produce un solo ticket y las
+reasignaciones preservan el estado salvo la primera asignacion de un ticket `nuevo`.
+
 ## Empezar aqui
 
 Contexto canonico para Ivan, Oscar y cualquier agente Codex:

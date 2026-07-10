@@ -2,6 +2,12 @@
 
 Sistema interno para Ivan/Oscar: intake de WhatsApp/manual, tickets operativos, asignacion, propuestas por modelos locales/Codex y aprobacion humana.
 
+## Empezar aqui
+
+Contexto canonico para Ivan, Oscar y cualquier agente Codex:
+[`docs/project-context.md`](docs/project-context.md). Este documento reemplaza estados
+antiguos publicados durante etapas previas de la integracion.
+
 ## Local
 
 ```bash
@@ -34,7 +40,7 @@ El worker local es el puente entre Ops, el modelo local y Codex. Se instala con 
 ```bash
 OPS_BASE_URL=http://127.0.0.1:8090 \
 OPS_WORKER_KEY=ivan \
-OPS_WORKER_TOKEN=269a9f3235d419f9d7fb3575f9bf92e0e9fe18d598be8f6a \
+OPS_WORKER_TOKEN=<worker-token-local> \
 php scripts/mac-agent.php
 ```
 

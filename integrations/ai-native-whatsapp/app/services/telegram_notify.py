@@ -71,27 +71,39 @@ class TelegramNotificationService:
         ticket_code: str,
         question: str,
         worker_key: str,
-        authorization_required: bool,
+        authorization_type: str,
     ) -> dict:
         if not self.settings.telegram_admin_chat_id:
             raise RuntimeError("TELEGRAM_ADMIN_CHAT_ID is not configured")
 
+        title = {
+            'changes': "AI Ops - diagnostico para autorizar cambios",
+            'deployment': "AI Ops - autorizacion de despliegue",
+        }.get(authorization_type, "AI Ops - informacion requerida")
         lines = [
-            "AI Ops - pregunta del agente",
+            title,
             f"Ticket: {ticket_code}",
             f"Agente: {worker_key}",
             "",
             question,
         ]
         reply_markup = None
-        if authorization_required:
+        if authorization_type == 'changes':
             reply_markup = {
                 "inline_keyboard": [[
-                    {"text": "Autorizar implementacion", "callback_data": f"ops:approve:{ticket_code}"},
+                    {"text": "Autorizar cambios", "callback_data": f"ops:approve_changes:{ticket_code}"},
                     {"text": "Rechazar", "callback_data": f"ops:reject:{ticket_code}"},
                 ]]
             }
-            lines.extend(["", "Usa los botones solo despues de revisar la propuesta."])
+            lines.extend(["", "Autorizar cambios permite implementar y probar. No autoriza despliegue."])
+        elif authorization_type == 'deployment':
+            reply_markup = {
+                "inline_keyboard": [[
+                    {"text": "Autorizar despliegue", "callback_data": f"ops:approve_deploy:{ticket_code}"},
+                    {"text": "Rechazar despliegue", "callback_data": f"ops:reject_deploy:{ticket_code}"},
+                ]]
+            }
+            lines.extend(["", "Autoriza despliegue solo despues de revisar cambios y pruebas."])
 
         return await self.send_text(str(self.settings.telegram_admin_chat_id), "\n".join(lines), reply_markup)
 

@@ -235,7 +235,7 @@ Request:
 ```json
 {
   "ticket_code": "OPS-2026-00042",
-  "action": "approve",
+  "action": "approve_changes",
   "worker_key": "ivan",
   "body": "Autorizo implementar la propuesta revisada.",
   "telegram_user_id": "123456789",
@@ -247,10 +247,12 @@ Acciones permitidas:
 
 - `question`: pregunta del agente o Codex.
 - `answer`: respuesta interna de Ivan/Oscar.
-- `approve`: marca la ultima propuesta `ready` como `approved` y el ticket como `en_progreso`.
+- `approve_changes`: marca la ultima propuesta `ready` como `approved` y el ticket como `en_progreso`. `approve` se mantiene como alias compatible.
 - `reject`: marca la ultima propuesta `ready` como `rejected` y el ticket como `en_revision`.
+- `approve_deploy`: exige cambios aprobados y registra `deployment_authorized` sin desplegar automaticamente.
+- `reject_deploy`: registra `deployment_rejected` sin cambiar la propuesta aprobada.
 
-`approve` exige una propuesta lista; no autoriza una implementacion inexistente.
+`approve_changes` autoriza cambios y pruebas, pero no despliegue. `approve_deploy` es una segunda autorizacion explicita y auditada.
 
 ## Puente local del agente
 
@@ -282,7 +284,8 @@ descartado.
 ```
 
 Fuentes permitidas: `local_model`, `codex` y `manual`. Una propuesta aceptada queda
-`ready`, mueve el ticket a `en_revision` y registra `proposal_ready`.
+`ready`, mueve el ticket a `en_revision`, registra `proposal_ready` y el worker publica
+el diagnostico en Telegram para decision humana.
 
 `GET /api/worker/updates?since_id=0&limit=50`
 
@@ -311,6 +314,9 @@ El comando local `php scripts/mac-agent.php ask ...` llama a
 `POST https://ainative.argotes.com/internal/telegram/questions` con un
 `TELEGRAM_AGENT_TOKEN`. El agente publica la pregunta, Telegram registra la respuesta
 en el ticket y el worker la recoge con `worker/updates`.
+
+Usar `--authorize` para solicitar permiso de cambios y `--deploy` solo despues de implementar
+y probar, para solicitar la autorizacion de despliegue separada.
 
 ## Reglas operativas
 

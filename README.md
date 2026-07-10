@@ -55,7 +55,9 @@ OPS_WORKER_TOKEN=<worker-token-local> \
 php scripts/mac-agent.php
 ```
 
-El agente lee tickets asignados, genera una propuesta local inicial y la sube al dashboard. Si hay un modelo local HTTP compatible con Ollama, configurar `LOCAL_MODEL_URL`.
+El agente valida primero proyecto, ruta, repositorio, contexto y evidencia. Si falta algo,
+pregunta por Telegram y no crea una propuesta generica. Con un modelo local HTTP compatible
+con Ollama, genera una propuesta valida, la sube al dashboard y envia el diagnostico a Telegram.
 
 Para que Codex liste tickets sin generar una propuesta:
 
@@ -78,6 +80,9 @@ TELEGRAM_AGENT_TOKEN=<token interno> \
 php scripts/mac-agent.php ask OPS-2026-00042 "Necesito confirmar el alcance antes de proponer cambios." \
   --authorize
 ```
+
+`--authorize` solicita permiso para modificar codigo y probar. Despues de implementar y validar,
+usar `--deploy` para solicitar una segunda autorizacion explicita antes del despliegue.
 
 Para leer respuestas y autorizaciones nuevas:
 

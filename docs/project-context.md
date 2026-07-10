@@ -68,13 +68,15 @@ flowchart LR
 5. Ops crea el ticket y sugiere Ivan para incidentes urgentes y Oscar para el resto, salvo `assigned_worker_key` explicito.
 6. Ivan u Oscar pueden reasignar manualmente el ticket desde el dashboard.
 7. El agente local del responsable consulta `/api/worker/tasks` con su token propio.
-8. El modelo local o Codex prepara diagnostico, plan, pruebas, riesgos y borrador; no aplica cambios.
-9. El agente sube la propuesta a `/api/worker/proposals`; el ticket queda en revision.
-10. Si falta contexto, el agente publica una pregunta interna mediante Telegram.
-11. Ivan u Oscar responden con `/responder`, o deciden con `/aprobar` y `/rechazar`.
-12. Una aprobacion valida exige una propuesta `ready`; cambia la propuesta a `approved` y el ticket a `en_progreso`.
-13. Solo despues de esa autorizacion una persona puede implementar o autorizar expresamente a Codex.
-14. La salida al cliente permanece deshabilitada operativamente hasta una decision posterior.
+8. Si falta proyecto, ruta, repositorio, contexto o evidencia, el agente pregunta por Telegram y no genera una propuesta generica.
+9. El modelo local o Codex prepara diagnostico, plan, pruebas, riesgos y borrador; no aplica cambios.
+10. El agente sube la propuesta a `/api/worker/proposals`; el ticket queda en revision y el diagnostico llega a Telegram.
+11. Ivan u Oscar responden con `/responder`, autorizan cambios con `/aprobar` o rechazan con `/rechazar`.
+12. Autorizar cambios exige una propuesta `ready`; cambia la propuesta a `approved` y el ticket a `en_progreso`.
+13. Solo despues de esa autorizacion Codex puede modificar codigo y ejecutar pruebas.
+14. El despliegue requiere otra solicitud y `/aprobar-deploy`; queda auditado como `deployment_authorized`.
+15. Ninguna aprobacion ejecuta implementacion o despliegue por si sola.
+16. La salida al cliente permanece deshabilitada operativamente hasta una decision posterior.
 
 Invariantes de administracion:
 
@@ -89,7 +91,7 @@ Invariantes de administracion:
 |---|---|
 | `nuevo` | Ticket creado sin responsable |
 | `asignado` | Tiene responsable y puede ser recogido por su agente local |
-| `en_propuesta` | Reservado para preparacion de propuesta |
+| `en_propuesta` | Preparando propuesta o esperando contexto solicitado por Telegram |
 | `en_revision` | Existe material para revision humana |
 | `aprobado` | Respuesta o decision aprobada para el flujo correspondiente |
 | `en_progreso` | Implementacion autorizada y en ejecucion humana/controlada |
@@ -193,6 +195,12 @@ Solicitar autorizacion para una propuesta ya lista:
 php scripts/mac-agent.php ask OPS-2026-00042 "Propuesta lista para decision." --authorize
 ```
 
+Solicitar autorizacion de despliegue solo despues de implementar y probar:
+
+```bash
+php scripts/mac-agent.php ask OPS-2026-00042 "Cambios y pruebas listos para revisar." --deploy
+```
+
 El worker debe guardar `next_since_id` al consumir actualizaciones para evitar repetir eventos.
 
 ## Comandos Telegram
@@ -202,10 +210,13 @@ El worker debe guardar `next_since_id` al consumir actualizaciones para evitar r
 /responder OPS-2026-00042 respuesta interna
 /aprobar OPS-2026-00042
 /rechazar OPS-2026-00042 motivo
+/aprobar-deploy OPS-2026-00042
+/rechazar-deploy OPS-2026-00042 motivo
 ```
 
-`/aprobar` y `/rechazar` operan sobre la propuesta mas reciente y solo aceptan usuarios
-incluidos en `TELEGRAM_USER_WORKER_MAP`.
+`/aprobar` autoriza cambios y pruebas sobre la propuesta mas reciente. No autoriza despliegue.
+`/aprobar-deploy` registra el segundo permiso explicito. Todos los comandos solo aceptan
+usuarios incluidos en `TELEGRAM_USER_WORKER_MAP`.
 
 ## API central
 

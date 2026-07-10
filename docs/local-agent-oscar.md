@@ -11,10 +11,11 @@ El worker local:
 1. Se autentica en `ops.argotes.com` como `oscar` con su `OPS_WORKER_TOKEN`.
 2. Lee solo tickets asignados a Oscar.
 3. Recibe proyecto, `local_path` y `server_ssh_target` ya reducidos para Oscar, repo, reglas y contexto operativo.
-4. Puede enviar el prompt a un modelo local o dejar que Codex prepare una propuesta.
-5. Sube la propuesta al ticket central.
-6. Publica preguntas internas por Telegram cuando falta informacion.
-7. Lee respuestas y autorizaciones registradas en Ops.
+4. Valida que existan proyecto, ruta, repositorio, contexto y evidencia suficientes.
+5. Si falta informacion, pregunta por Telegram y espera respuesta sin crear una propuesta generica.
+6. Puede enviar el prompt a un modelo local o dejar que Codex prepare una propuesta.
+7. Sube una propuesta valida al ticket central y envia el diagnostico a Telegram para revision.
+8. Lee respuestas y autorizaciones registradas en Ops.
 
 El worker local no abre Codex automaticamente, no modifica repos de clientes, no ejecuta
 deploy y no responde clientes. La implementacion es un paso separado posterior a una
@@ -91,11 +92,12 @@ Proceso interno:
 2. Obtiene solo tickets en estado procesable y asignados a Oscar.
 3. Selecciona `local_path_oscar` del proyecto, nunca la ruta de Ivan.
 4. Construye un prompt con ticket, cliente, proyecto, SSH, repo, reglas y contexto.
-5. Llama `LOCAL_MODEL_URL` si esta configurado.
-6. Si no hay modelo configurado, genera una plantilla segura de propuesta.
-7. Sube la propuesta con `source=local_model`.
+5. Si faltan datos, pregunta por Telegram, deja el ticket esperando respuesta y no llama al modelo.
+6. Llama `LOCAL_MODEL_URL`; si el modelo falla o no responde, avisa por Telegram y no sube una plantilla.
+7. Sube una propuesta valida con `source=local_model`.
 8. Ops cambia el ticket a `en_revision` y registra `proposal_ready`.
-9. El worker termina; no implementa nada.
+9. Telegram recibe un resumen, enlace al ticket y botones para autorizar cambios o rechazar.
+10. El worker termina; no implementa nada.
 
 Para ejecutar este modo cada 60 segundos con `launchd`, primero se debe configurar un
 modelo local real y despues instalar el servicio:
@@ -165,6 +167,12 @@ Si la propuesta ya esta lista y requiere decision:
 ./scripts/ops-agent-oscar.sh ask OPS-2026-00042 "Propuesta lista para revisar" --authorize
 ```
 
+Despues de implementar y ejecutar pruebas, solicitar por separado autorizacion de despliegue:
+
+```bash
+./scripts/ops-agent-oscar.sh ask OPS-2026-00042 "Cambios y pruebas listos para revisar" --deploy
+```
+
 Leer respuestas nuevas:
 
 ```bash
@@ -176,12 +184,12 @@ ese numero y usarlo en la siguiente llamada.
 
 ## Despues de aprobar
 
-Telegram no dispara una implementacion automatica. `/aprobar` solo registra la autorizacion,
-marca la propuesta `approved` y el ticket `en_progreso`.
+`/aprobar` o el boton `Autorizar cambios` registra autorizacion explicita para modificar codigo
+y ejecutar pruebas, marca la propuesta `approved` y el ticket `en_progreso`.
 
-Despues, Oscar o Ivan deben dar una instruccion nueva y explicita en el hilo Codex del repo
-cliente: implementar la propuesta aprobada, ejecutar pruebas y detenerse antes del deploy si
-el deploy no fue autorizado tambien.
+Despues, Codex puede implementar la propuesta aprobada y ejecutar pruebas. Debe detenerse antes
+del despliegue y enviar el resultado a Telegram. Solo `/aprobar-deploy` o el boton
+`Autorizar despliegue` registra el segundo permiso. Ninguna aprobacion ejecuta el deploy por si sola.
 
 ## Diagnostico rapido
 
@@ -191,7 +199,7 @@ el deploy no fue autorizado tambien.
 | `invalid worker token` | Token de otro usuario o valor viejo | Obtener el token propio de Oscar por privado |
 | `worker=oscar` no aparece | `OPS_WORKER_KEY` incorrecto | Establecer exactamente `oscar` |
 | No aparecen tickets | No hay tickets asignados a Oscar o estan en revision/cerrados | Revisar dashboard y asignacion |
-| Modelo local vacio | Ollama/modelo no configurado | Completar URL y nombre exacto, o usar modo Codex |
+| Modelo local vacio | Ollama/modelo no configurado | Completar URL y nombre exacto; no se suben plantillas |
 | Telegram `403` | `TELEGRAM_AGENT_TOKEN` distinto | Sincronizar el token compartido por privado |
 | Submit `403` | Ticket no asignado a Oscar | Reasignar en dashboard antes de subir propuesta |
 | SSH no configurado | Falta `server_ssh_oscar` en el proyecto | Registrar el alias propio de Oscar; no copiar el de Ivan |
@@ -204,6 +212,8 @@ el deploy no fue autorizado tambien.
 - `submit` crea una propuesta `codex` visible en el dashboard.
 - `ask` publica en Telegram.
 - `updates` recupera la respuesta o decision.
+- Una propuesta valida llega a Telegram con autorizacion de cambios.
+- El despliegue exige una segunda autorizacion explicita.
 - Ningun secreto aparece en terminal compartida, Git o Slack.
 - Ningun repo cliente se modifica antes de autorizacion.
 - `launchd` se instala solo si el modelo local real esta configurado.

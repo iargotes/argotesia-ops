@@ -54,7 +54,7 @@ php -r '
 if [[ -n "${LOCAL_MODEL_URL:-}" ]]; then
   print "Local model configured: ${LOCAL_MODEL_NAME:-unnamed}"
 else
-  print "Local model not configured; run will use the safe proposal template."
+  print "Local model not configured; automatic diagnostics remain disabled."
 fi
 
 cat <<EOF
@@ -72,4 +72,7 @@ Codex-assisted proposal:
 
 Internal question:
   ./scripts/ops-agent-oscar.sh ask OPS-2026-00042 "question"
+
+Deployment authorization request after implementation and tests:
+  ./scripts/ops-agent-oscar.sh ask OPS-2026-00042 "changes and tests ready" --deploy
 EOF

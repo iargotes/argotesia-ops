@@ -199,6 +199,8 @@ El flujo no consume el outbox ni envia respuestas a clientes. Para control inter
 /aprobar OPS-2026-00042
 /rechazar OPS-2026-00042 motivo
 /responder OPS-2026-00042 texto para el agente
+/aprobar-deploy OPS-2026-00042
+/rechazar-deploy OPS-2026-00042 motivo
 ```
 
 Los botones de autorizar/rechazar solo funcionan para propuestas listas y para usuarios
@@ -214,9 +216,13 @@ curl -sS -X POST https://ainative.argotes.com/internal/telegram/questions \
     "ticket_code": "OPS-2026-00042",
     "question": "Necesito autorizacion para aplicar la propuesta revisada.",
     "worker_key": "ivan",
-    "authorization_required": true
+    "authorization_required": true,
+    "authorization_type": "changes"
   }'
 ```
+
+Valores de `authorization_type`: `none`, `changes` y `deployment`. La autorizacion de
+`changes` nunca autoriza despliegue; `deployment` se solicita despues de implementar y probar.
 
 ## Siguiente paso recomendado
 

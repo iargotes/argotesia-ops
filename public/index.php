@@ -480,11 +480,31 @@ if ($path === '/api/worker/tasks' && $method === 'GET') {
         t.source_channel, t.intent, t.urgency, t.status, t.client_reply_draft,
         p.name AS project_name, p.local_path_ivan, p.local_path_oscar,
         p.server_ssh, p.server_ssh_ivan, p.server_ssh_oscar, p.repo_url, p.codex_rules,
-        p.aliases AS project_aliases, p.operational_context AS project_operational_context
+        p.aliases AS project_aliases, p.operational_context AS project_operational_context,
+        (
+          SELECT answer.body
+          FROM ticket_events answer
+          WHERE answer.ticket_id = t.id AND answer.event_type = 'telegram_answer'
+          ORDER BY answer.id DESC
+          LIMIT 1
+        ) AS latest_human_answer
       FROM tickets t
       LEFT JOIN projects p ON p.id = t.project_id
       WHERE t.assigned_user_id = :uid
         AND t.status IN ('nuevo','asignado','en_propuesta')
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ticket_events question
+          WHERE question.ticket_id = t.id
+            AND question.event_type = 'telegram_question'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM ticket_events answer
+              WHERE answer.ticket_id = t.id
+                AND answer.event_type = 'telegram_answer'
+                AND answer.id > question.id
+            )
+        )
       ORDER BY FIELD(t.urgency,'alta','media','baja'), t.created_at ASC
       LIMIT 10
     ");
@@ -525,7 +545,13 @@ if ($path === '/api/worker/updates' && $method === 'GET') {
          INNER JOIN tickets t ON t.id = te.ticket_id
          WHERE t.assigned_user_id = :uid
            AND te.id > :since_id
-           AND te.event_type IN ('telegram_answer','implementation_authorized','implementation_rejected')
+           AND te.event_type IN (
+             'telegram_answer',
+             'implementation_authorized',
+             'implementation_rejected',
+             'deployment_authorized',
+             'deployment_rejected'
+           )
          ORDER BY te.id ASC
          LIMIT {$limit}"
     );
@@ -615,15 +641,26 @@ if ($path === '/api/tickets/telegram-actions' && $method === 'POST') {
     $input = json_input();
     $ticketCode = strtoupper(trim((string)($input['ticket_code'] ?? '')));
     $action = strtolower(trim((string)($input['action'] ?? '')));
+    if ($action === 'approve') {
+        $action = 'approve_changes';
+    }
     $body = trim((string)($input['body'] ?? ''));
     $workerKey = strtolower(trim((string)($input['worker_key'] ?? '')));
     $telegramUserId = trim((string)($input['telegram_user_id'] ?? ''));
     $telegramUsername = trim((string)($input['telegram_username'] ?? ''));
 
-    if ($ticketCode === '' || !in_array($action, ['approve', 'reject', 'question', 'answer'], true) || $workerKey === '') {
+    $allowedActions = [
+        'approve_changes',
+        'approve_deploy',
+        'reject',
+        'reject_deploy',
+        'question',
+        'answer',
+    ];
+    if ($ticketCode === '' || !in_array($action, $allowedActions, true) || $workerKey === '') {
         json_response(['ok' => false, 'error' => 'ticket_code/action/worker_key required'], 422);
     }
-    if (in_array($action, ['question', 'answer', 'reject'], true) && $body === '') {
+    if (in_array($action, ['question', 'answer', 'reject', 'reject_deploy'], true) && $body === '') {
         json_response(['ok' => false, 'error' => 'body required for this action'], 422);
     }
 
@@ -644,13 +681,24 @@ if ($path === '/api/tickets/telegram-actions' && $method === 'POST') {
     $auditBody = trim($actorLabel . ' (' . $workerKey . '). ' . $body);
 
     if (in_array($action, ['question', 'answer'], true)) {
+        $newTicketStatus = (string)$ticket['status'];
+        if ($action === 'question' && in_array($newTicketStatus, ['nuevo', 'asignado'], true)) {
+            $newTicketStatus = 'en_propuesta';
+        } elseif ($action === 'answer' && $newTicketStatus === 'en_propuesta') {
+            $newTicketStatus = 'asignado';
+        }
+
+        if ($newTicketStatus !== (string)$ticket['status']) {
+            $stmt = $conn->prepare("UPDATE tickets SET status = :status WHERE id = :id LIMIT 1");
+            $stmt->execute([':status' => $newTicketStatus, ':id' => $ticketId]);
+        }
         add_event($conn, $ticketId, $actorId, 'telegram_' . $action, mb_substr($auditBody, 0, 4000));
         json_response([
             'ok' => true,
             'action' => $action,
             'ticket_id' => $ticketId,
             'ticket_code' => $ticket['code'],
-            'ticket_status' => $ticket['status'],
+            'ticket_status' => $newTicketStatus,
         ]);
     }
 
@@ -663,7 +711,60 @@ if ($path === '/api/tickets/telegram-actions' && $method === 'POST') {
 
     $proposalId = (int)$proposal['id'];
     $proposalStatus = (string)$proposal['status'];
-    if ($action === 'approve' && $proposalStatus === 'approved') {
+
+    if (in_array($action, ['approve_deploy', 'reject_deploy'], true)) {
+        if ($proposalStatus !== 'approved') {
+            json_response(['ok' => false, 'error' => 'changes must be approved before deployment decision'], 409);
+        }
+
+        $stmt = $conn->prepare(
+            "SELECT id FROM ticket_events WHERE ticket_id = :ticket_id AND event_type = 'implementation_authorized' ORDER BY id DESC LIMIT 1"
+        );
+        $stmt->execute([':ticket_id' => $ticketId]);
+        $implementationEventId = (int)($stmt->fetchColumn() ?: 0);
+        if ($implementationEventId <= 0) {
+            json_response(['ok' => false, 'error' => 'implementation authorization not found'], 409);
+        }
+
+        $eventType = $action === 'approve_deploy' ? 'deployment_authorized' : 'deployment_rejected';
+        $stmt = $conn->prepare(
+            "SELECT id FROM ticket_events WHERE ticket_id = :ticket_id AND event_type = :event_type AND id > :after_id ORDER BY id DESC LIMIT 1"
+        );
+        $stmt->execute([
+            ':ticket_id' => $ticketId,
+            ':event_type' => $eventType,
+            ':after_id' => $implementationEventId,
+        ]);
+        $existingDecisionId = (int)($stmt->fetchColumn() ?: 0);
+        if ($existingDecisionId > 0) {
+            json_response([
+                'ok' => true,
+                'already' => true,
+                'action' => $action,
+                'ticket_id' => $ticketId,
+                'ticket_code' => $ticket['code'],
+                'ticket_status' => $ticket['status'],
+                'proposal_id' => $proposalId,
+                'proposal_status' => $proposalStatus,
+            ]);
+        }
+
+        $eventBody = $action === 'approve_deploy'
+            ? trim($auditBody . ' Autorizacion explicita para desplegar la propuesta #' . $proposalId . '.')
+            : trim($auditBody . ' Despliegue de la propuesta #' . $proposalId . ' rechazado.');
+        add_event($conn, $ticketId, $actorId, $eventType, mb_substr($eventBody, 0, 4000));
+        json_response([
+            'ok' => true,
+            'action' => $action,
+            'ticket_id' => $ticketId,
+            'ticket_code' => $ticket['code'],
+            'ticket_status' => $ticket['status'],
+            'proposal_id' => $proposalId,
+            'proposal_status' => $proposalStatus,
+        ]);
+    }
+
+    if ($action === 'approve_changes' && $proposalStatus === 'approved') {
         json_response([
             'ok' => true,
             'already' => true,
@@ -689,10 +790,10 @@ if ($path === '/api/tickets/telegram-actions' && $method === 'POST') {
         json_response(['ok' => false, 'error' => 'latest proposal is not awaiting decision'], 409);
     }
 
-    $newProposalStatus = $action === 'approve' ? 'approved' : 'rejected';
-    $newTicketStatus = $action === 'approve' ? 'en_progreso' : 'en_revision';
-    $eventType = $action === 'approve' ? 'implementation_authorized' : 'implementation_rejected';
-    $eventBody = $action === 'approve'
+    $newProposalStatus = $action === 'approve_changes' ? 'approved' : 'rejected';
+    $newTicketStatus = $action === 'approve_changes' ? 'en_progreso' : 'en_revision';
+    $eventType = $action === 'approve_changes' ? 'implementation_authorized' : 'implementation_rejected';
+    $eventBody = $action === 'approve_changes'
         ? trim($auditBody . ' Autorizacion explicita para implementar la propuesta #' . $proposalId . '.')
         : trim($auditBody . ' Propuesta #' . $proposalId . ' rechazada; requiere revision.');
 

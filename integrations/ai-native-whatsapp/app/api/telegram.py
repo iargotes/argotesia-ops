@@ -1,5 +1,5 @@
 import secrets
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -16,6 +16,7 @@ class AgentQuestionRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     worker_key: str = Field(min_length=1, max_length=40)
     authorization_required: bool = False
+    authorization_type: Literal['none', 'changes', 'deployment'] = 'none'
 
 
 def require_agent_token(authorization: str | None) -> None:
@@ -59,12 +60,15 @@ async def agent_question(
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     require_agent_token(authorization)
+    authorization_type = request.authorization_type
+    if request.authorization_required and authorization_type == 'none':
+        authorization_type = 'changes'
     try:
         result = await TelegramControlService().publish_agent_question(
             ticket_code=request.ticket_code.upper(),
             question=request.question,
             worker_key=request.worker_key.lower(),
-            authorization_required=request.authorization_required,
+            authorization_type=authorization_type,
         )
     except OpsActionError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc

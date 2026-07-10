@@ -27,10 +27,14 @@ class TelegramControlService:
         command = parts[0].split('@', 1)[0].lower()
         if command in {'/ayuda', '/help'}:
             return ('help', '', '')
-        if command in {'/aprobar', '/autorizar'} and len(parts) >= 2:
-            return ('approve', parts[1].upper(), parts[2] if len(parts) == 3 else '')
+        if command in {'/aprobar', '/autorizar', '/aprobar-cambios', '/autorizar-cambios'} and len(parts) >= 2:
+            return ('approve_changes', parts[1].upper(), parts[2] if len(parts) == 3 else '')
+        if command in {'/aprobar-deploy', '/autorizar-deploy'} and len(parts) >= 2:
+            return ('approve_deploy', parts[1].upper(), parts[2] if len(parts) == 3 else '')
         if command == '/rechazar' and len(parts) >= 2:
             return ('reject', parts[1].upper(), parts[2] if len(parts) == 3 else 'Rechazo solicitado por Telegram.')
+        if command == '/rechazar-deploy' and len(parts) >= 2:
+            return ('reject_deploy', parts[1].upper(), parts[2] if len(parts) == 3 else 'Despliegue rechazado por Telegram.')
         if command in {'/responder', '/respuesta'} and len(parts) >= 3:
             return ('answer', parts[1].upper(), parts[2])
         return None
@@ -48,19 +52,19 @@ class TelegramControlService:
         ticket_code: str,
         question: str,
         worker_key: str,
-        authorization_required: bool,
+        authorization_type: str,
     ) -> dict[str, Any]:
+        message = await self.telegram.send_agent_question(
+            ticket_code=ticket_code,
+            question=question,
+            worker_key=worker_key,
+            authorization_type=authorization_type,
+        )
         await self.actions.execute(
             ticket_code=ticket_code,
             action='question',
             worker_key=worker_key,
             body=question,
-        )
-        message = await self.telegram.send_agent_question(
-            ticket_code=ticket_code,
-            question=question,
-            worker_key=worker_key,
-            authorization_required=authorization_required,
         )
         return {
             'ticket_code': ticket_code,
@@ -87,7 +91,7 @@ class TelegramControlService:
 
         data = str(callback.get('data') or '')
         prefix, action, ticket_code = (data.split(':', 2) + ['', '', ''])[:3]
-        if prefix != 'ops' or action not in {'approve', 'reject'} or not ticket_code:
+        if prefix != 'ops' or action not in {'approve_changes', 'approve_deploy', 'reject', 'reject_deploy'} or not ticket_code:
             return {'handled': False, 'reason': 'unsupported_callback'}
 
         result = await self.actions.execute(
@@ -103,7 +107,7 @@ class TelegramControlService:
             await self.telegram.answer_callback(callback_id, 'Accion registrada.')
         await self.telegram.send_text(
             str(message['chat']['id']),
-            f"Ticket {ticket_code.upper()}: {action} registrado. Estado: {result.get('ticket_status', 'actualizado')}.",
+            f"Ticket {ticket_code.upper()}: {self.action_label(action)}. Estado: {result.get('ticket_status', 'actualizado')}.",
         )
         return {'handled': True, 'action': action, 'ticket_code': ticket_code.upper()}
 
@@ -135,7 +139,7 @@ class TelegramControlService:
         )
         await self.telegram.send_text(
             str(chat['id']),
-            f"Ticket {ticket_code}: {action} registrado. Estado: {result.get('ticket_status', 'sin cambio')}.",
+            f"Ticket {ticket_code}: {self.action_label(action)}. Estado: {result.get('ticket_status', 'sin cambio')}.",
         )
         return {'handled': True, 'action': action, 'ticket_code': ticket_code}
 
@@ -143,8 +147,20 @@ class TelegramControlService:
     def help_text() -> str:
         return (
             "Comandos ArgotesIA Ops:\n"
-            "/aprobar OPS-2026-00042\n"
+            "/aprobar OPS-2026-00042  (autoriza cambios y pruebas)\n"
             "/rechazar OPS-2026-00042 motivo\n"
             "/responder OPS-2026-00042 texto\n"
+            "/aprobar-deploy OPS-2026-00042\n"
+            "/rechazar-deploy OPS-2026-00042 motivo\n"
             "/ayuda"
         )
+
+    @staticmethod
+    def action_label(action: str) -> str:
+        return {
+            'approve_changes': 'cambios autorizados',
+            'approve_deploy': 'despliegue autorizado',
+            'reject': 'propuesta rechazada',
+            'reject_deploy': 'despliegue rechazado',
+            'answer': 'respuesta registrada',
+        }.get(action, f'{action} registrado')

@@ -80,7 +80,7 @@ Crea una entrada de intake clasificada y, por defecto, crea el ticket operativo.
 | `source_channel` | string | No | Usar `whatsapp`. Valores: `whatsapp`, `audio`, `email`, `phone`, `manual`, `web`, `other`. |
 | `external_ref` | string | Recomendado | Identificador unico del mensaje/audio. Necesario para evitar duplicados. |
 | `client_name` | string | No | Nombre del cliente o empresa si se conoce. |
-| `client_contact` | string | No | Telefono, email o contacto de origen. |
+| `client_contact` | string | No | Telefono, email o contacto de origen. Si coincide con `client_phones` de un proyecto, lo resuelve sin IA. |
 | `title` | string | No | Si falta, el sistema usa el inicio de la transcripcion. |
 | `transcript` | string | Si | Texto transcrito del audio o mensaje. |
 | `raw_notes` | string | No | Notas internas o diagnostico del transcriptor. |
@@ -290,5 +290,6 @@ en el ticket y el worker la recoge con `worker/updates`.
 - `external_ref` debe ser unico por mensaje/audio. Ejemplo recomendado: `whatsapp:<phone>:<message_id>`.
 - No enviar audios binarios al API. Enviar URL o metadata del audio y la transcripcion en texto.
 - No enviar secretos dentro de `raw_payload`.
+- La resolucion de proyecto prioriza `project_key` explicito; en clasificacion automatica usa primero el telefono normalizado y despues alias/texto.
 - Si `assigned_worker_key` no se envia, el clasificador sugiere Ivan para incidentes urgentes y Oscar para el resto.
 - El canal de salida debe enviar mensajes solo cuando el ticket este `aprobado`, salvo pruebas internas controladas.

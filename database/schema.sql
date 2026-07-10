@@ -29,11 +29,14 @@ CREATE TABLE IF NOT EXISTS projects (
   project_key VARCHAR(80) NOT NULL,
   name VARCHAR(180) NOT NULL,
   client_name VARCHAR(180) NULL,
+  aliases TEXT NULL,
+  client_phones TEXT NULL,
   local_path_ivan VARCHAR(500) NULL,
   local_path_oscar VARCHAR(500) NULL,
   server_ssh VARCHAR(255) NULL,
   repo_url VARCHAR(255) NULL,
   codex_rules TEXT NULL,
+  operational_context MEDIUMTEXT NULL,
   status ENUM('active','paused','archived') NOT NULL DEFAULT 'active',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
@@ -199,12 +202,14 @@ ON DUPLICATE KEY UPDATE
   status = VALUES(status);
 
 INSERT INTO projects
-  (id, project_key, name, client_name, local_path_ivan, local_path_oscar, server_ssh, repo_url, codex_rules, status)
+  (id, project_key, name, client_name, aliases, client_phones, local_path_ivan, local_path_oscar, server_ssh, repo_url, codex_rules, operational_context, status)
 VALUES
-  (1, 'argotesia-ops', 'ArgotesIA Ops', 'ArgotesIA', '/Users/iargote/projects/Tec/argotesia-ops', NULL, NULL, NULL, 'Codex/modelo local debe diagnosticar y proponer. No implementar sin autorizacion humana.', 'active')
+  (1, 'argotesia-ops', 'ArgotesIA Ops', 'ArgotesIA', 'ArgotesIA Ops\nArgotesIA', NULL, '/Users/iargote/projects/Tec/argotesia-ops', NULL, NULL, NULL, 'Codex/modelo local debe diagnosticar y proponer. No implementar sin autorizacion humana.', NULL, 'active')
 ON DUPLICATE KEY UPDATE
   name = VALUES(name),
   client_name = VALUES(client_name),
+  aliases = VALUES(aliases),
+  client_phones = VALUES(client_phones),
   local_path_ivan = VALUES(local_path_ivan),
   codex_rules = VALUES(codex_rules),
   status = VALUES(status);

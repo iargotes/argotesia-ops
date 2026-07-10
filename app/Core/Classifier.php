@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 final class Classifier
 {
-    public static function classify(PDO $conn, string $title, string $text): array
+    public static function classify(PDO $conn, string $title, string $text, string $clientContact = ''): array
     {
         $normalized = self::normalize($title . ' ' . $text);
         $intent = 'unknown';
@@ -30,7 +30,7 @@ final class Classifier
             $confidence = 0.7;
         }
 
-        $project = self::detectProject($conn, $normalized);
+        $project = self::detectProject($conn, $normalized, $clientContact);
         $assigned = self::suggestAssignee($conn, $intent, $urgency);
         $summary = self::summary($title, $text, $intent, $urgency);
 
@@ -46,11 +46,29 @@ final class Classifier
         ];
     }
 
-    private static function detectProject(PDO $conn, string $text): ?array
+    private static function detectProject(PDO $conn, string $text, string $clientContact): ?array
     {
         $projects = $conn->query("SELECT * FROM projects WHERE status = 'active' ORDER BY id ASC")->fetchAll();
+        $contactDigits = self::phoneDigits($clientContact);
+        if ($contactDigits !== '') {
+            foreach ($projects as $project) {
+                $phones = preg_split('/[\r\n,;]+/', (string)($project['client_phones'] ?? '')) ?: [];
+                foreach ($phones as $phone) {
+                    if (self::samePhone($contactDigits, self::phoneDigits($phone))) {
+                        return $project;
+                    }
+                }
+            }
+        }
+
         foreach ($projects as $project) {
-            $tokens = preg_split('/\s+/', self::normalize((string)$project['project_key'] . ' ' . (string)$project['name'] . ' ' . (string)($project['client_name'] ?? ''))) ?: [];
+            $searchable = implode(' ', [
+                (string)$project['project_key'],
+                (string)$project['name'],
+                (string)($project['client_name'] ?? ''),
+                (string)($project['aliases'] ?? ''),
+            ]);
+            $tokens = preg_split('/\s+/', self::normalize($searchable)) ?: [];
             foreach ($tokens as $token) {
                 if (mb_strlen($token) >= 5 && str_contains($text, $token)) {
                     return $project;
@@ -58,6 +76,24 @@ final class Classifier
             }
         }
         return count($projects) === 1 ? $projects[0] : null;
+    }
+
+    private static function samePhone(string $left, string $right): bool
+    {
+        if ($left === '' || $right === '') {
+            return false;
+        }
+        if ($left === $right) {
+            return true;
+        }
+        $shorter = strlen($left) <= strlen($right) ? $left : $right;
+        $longer = strlen($left) > strlen($right) ? $left : $right;
+        return strlen($shorter) >= 8 && str_ends_with($longer, $shorter);
+    }
+
+    private static function phoneDigits(string $value): string
+    {
+        return (string)preg_replace('/\D+/', '', $value);
     }
 
     private static function suggestAssignee(PDO $conn, string $intent, string $urgency): ?array
@@ -118,4 +154,3 @@ final class Classifier
         ]);
     }
 }
-

@@ -23,3 +23,9 @@
 - Tickets asignados a Ivan u Oscar.
 - Worker API para agentes locales en Mac.
 - Propuestas tecnicas y respuestas sugeridas al cliente.
+
+## Agente local
+- El worker local es `scripts/mac-agent.php`; no es Codex ni implementa automaticamente.
+- Para Oscar, leer y seguir `docs/local-agent-oscar.md`.
+- Usar `tasks` para leer trabajo sin procesarlo y `submit` para subir una propuesta de Codex.
+- Despues de una aprobacion, esperar una orden humana nueva antes de editar el repo cliente.

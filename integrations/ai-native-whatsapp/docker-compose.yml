@@ -6,6 +6,13 @@ services:
       APP_PORT: 8000
       DATABASE_URL: postgresql+psycopg://ai_ops_center:ai_ops_center@db:5432/ai_ops_center
       WHATSAPP_ALLOWED_SENDERS: "${WHATSAPP_ALLOWED_SENDERS:-}"
+      WHATSAPP_AUTO_REPLY: "${WHATSAPP_AUTO_REPLY:-false}"
+      OPS_INTAKE_URL: "${OPS_INTAKE_URL:-}"
+      OPS_API_TOKEN: "${OPS_API_TOKEN:-}"
+      OPS_PROJECT_KEY: "${OPS_PROJECT_KEY:-}"
+      OPS_ASSIGNED_WORKER_KEY: "${OPS_ASSIGNED_WORKER_KEY:-}"
+      OPS_CREATE_TICKET: "${OPS_CREATE_TICKET:-true}"
+      OPS_TIMEOUT_SECONDS: "${OPS_TIMEOUT_SECONDS:-10}"
       LLM_PROVIDER: mock
       LOG_LEVEL: INFO
     ports:
@@ -42,6 +49,7 @@ services:
       WHATSAPP_CLIENT_ID: "${WHATSAPP_CLIENT_ID:-mcp-whatsapp-ai-ops-center}"
       WHATSAPP_ALLOWED_SENDERS: "${WHATSAPP_ALLOWED_SENDERS:-}"
       WHATSAPP_WEBHOOK_SECRET: "${WHATSAPP_WEBHOOK_SECRET:-}"
+      WHATSAPP_AUTO_REPLY: "${WHATSAPP_AUTO_REPLY:-false}"
     ports:
       - "3000:3000"
     depends_on:

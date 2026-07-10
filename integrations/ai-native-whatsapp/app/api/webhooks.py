@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.schemas import WebhookResponse
 from app.core.security import verify_whatsapp_secret
 from app.services.telegram_notify import TelegramNotificationService
+from app.services.ops_intake import OpsIntakeError, OpsIntakeService
 from app.services.whatsapp_ingestion import IgnoredWhatsAppMessage, WhatsAppIngestionService
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -31,6 +32,11 @@ async def whatsapp_webhook(payload: dict[str, Any], db: Session = Depends(get_db
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
+    try:
+        ops_result = await OpsIntakeService().send(normalized, classification)
+    except OpsIntakeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
     await TelegramNotificationService().notify_incident(normalized, incident, classification)
 
     return WebhookResponse(
@@ -39,4 +45,7 @@ async def whatsapp_webhook(payload: dict[str, Any], db: Session = Depends(get_db
         incident_id=incident.ticket_id,
         classification=classification,
         reply_to_customer=None,
+        ops_intake_id=ops_result.get("intake_id") if ops_result else None,
+        ops_ticket_id=ops_result.get("ticket_id") if ops_result else None,
+        ops_ticket_code=ops_result.get("ticket_code") if ops_result else None,
     )

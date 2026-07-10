@@ -19,6 +19,7 @@ const state = {
 
 let client;
 let botEnabled = true;
+const autoReplyEnabled = process.env.WHATSAPP_AUTO_REPLY === 'true';
 
 function sanitizeText(text = '') {
   if (typeof text !== 'string') return '';
@@ -172,7 +173,7 @@ function initWhatsApp() {
 
     try {
       const response = await postToBackend(payload);
-      const replyMessage = typeof response?.data?.message === 'string'
+      const replyMessage = autoReplyEnabled && typeof response?.data?.message === 'string'
         ? response.data.message.trim()
         : '';
       const replyTarget = response?.data?.to || payload.from;
@@ -249,6 +250,7 @@ function getDiagnostics() {
     ...state,
     lastQr: state.lastQr ? '[available]' : null,
     botEnabled,
+    autoReplyEnabled,
     backendWebhookUrl: process.env.WHATSAPP_BACKEND_WEBHOOK_URL || null,
     clientId: process.env.WHATSAPP_CLIENT_ID || 'mcp-whatsapp-ai-ops-center',
     allowedSendersConfigured: parseAllowedSenders(process.env.WHATSAPP_ALLOWED_SENDERS || '').length

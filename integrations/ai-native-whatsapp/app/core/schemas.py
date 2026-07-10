@@ -49,6 +49,9 @@ class WebhookResponse(BaseModel):
     classification: ClassificationResult | None = None
     reason: str | None = None
     reply_to_customer: None = None
+    ops_intake_id: int | None = None
+    ops_ticket_id: int | None = None
+    ops_ticket_code: str | None = None
 
 
 class WhatsAppReferencePayload(BaseModel):

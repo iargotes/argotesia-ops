@@ -9,7 +9,7 @@ Este proyecto nace del documento base `AI_NATIVE_COMPANY_BLUEPRINT.md`. La prime
 Construir un MVP que haga este flujo:
 
 ```text
-WhatsApp -> Webhook FastAPI -> Base de datos -> Clasificacion IA -> Telegram interno
+WhatsApp -> Webhook FastAPI -> ArgotesIA Ops -> Dashboard interno
 ```
 
 El sistema debe:
@@ -19,6 +19,7 @@ El sistema debe:
 - Normalizar mensajes de texto.
 - Clasificar proyecto, tipo y prioridad.
 - Notificar a Oscar por Telegram.
+- Crear el ticket interno en `https://ops.argotes.com` usando el contrato de intake.
 - Mantener control humano antes de cualquier respuesta externa.
 
 ## Principios
@@ -146,6 +147,25 @@ Reglas:
 ```bash
 .venv/bin/python -m pytest
 ```
+
+## Integracion con ArgotesIA Ops
+
+El webhook envia cada mensaje aceptado al dashboard central cuando estan configuradas
+`OPS_INTAKE_URL` y `OPS_API_TOKEN`. `OPS_CREATE_TICKET=true` crea el ticket interno;
+el `external_ref` usa `whatsapp:<sender>:<message_id>` para que los reintentos no
+dupliquen tickets.
+
+Configurar estas variables en el entorno del servicio:
+
+```env
+OPS_INTAKE_URL=https://ops.argotes.com/index.php?r=%2Fapi%2Fintake%2Fmessages
+OPS_API_TOKEN=<token entregado por Ivan por canal seguro>
+OPS_CREATE_TICKET=true
+WHATSAPP_AUTO_REPLY=false
+```
+
+El flujo no consume el outbox ni envia respuestas a clientes. La respuesta queda
+bloqueada hasta que se implemente y autorice explicitamente ese canal.
 
 ## Siguiente paso recomendado
 

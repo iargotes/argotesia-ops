@@ -81,7 +81,7 @@ Ignorar:
 - broadcast `@broadcast`
 - newsletters `@newsletter`
 - mensajes propios en el evento inbound principal
-- tipos que no sean texto `chat`
+- tipos que no sean texto `chat` o audio `ptt`/`audio`
 
 ## Filtro de clientes autorizados
 
@@ -122,6 +122,18 @@ Lista que falta definir con Oscar:
 }
 ```
 
+Para notas de voz, el conector agrega temporalmente `media.data` en base64 y
+`media.mimetype`. FastAPI valida el remitente antes de transcribir, elimina el base64
+antes de persistir y envia a Ops un intake `source_channel=audio` con la transcripcion.
+
+Limites de produccion recomendados:
+
+- 10 MB maximo por archivo.
+- 5 minutos maximo por audio.
+- una transcripcion simultanea.
+- modelo `tiny`, CPU e `int8`.
+- timeout de 180 segundos entre el conector y FastAPI.
+
 ## Respuesta del backend
 
 La referencia permite que el backend responda:
@@ -155,11 +167,12 @@ Validaciones esperadas:
 - Logs muestran eventos `READY`, `OUT` y `ACK`.
 - Si aparece `UNPAIRED`, `CONFLICT` o no hay `wid`, revisar autenticacion QR.
 
-## Pendiente para implementacion
+## Cobertura de pruebas
 
-Cuando se cree el codigo del MVP, agregar un adaptador Pydantic para este payload y pruebas con:
+El adaptador y los filtros deben conservar pruebas con:
 
 - `from` terminado en `@c.us`.
 - `from` terminado en `@lid`.
 - `type` igual a `chat`.
+- `type` igual a `ptt`.
 - payloads ignorados por venir de grupo o broadcast.

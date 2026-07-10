@@ -4,7 +4,8 @@ const axios = require('axios');
 
 const BLOCKED_CHAT_IDS = new Set(['status@broadcast']);
 const BLOCKED_CHAT_SUFFIXES = ['@g.us', '@broadcast', '@newsletter'];
-const SUPPORTED_INBOUND_TYPES = new Set(['chat']);
+const SUPPORTED_INBOUND_TYPES = new Set(['chat', 'ptt', 'audio']);
+const AUDIO_INBOUND_TYPES = new Set(['ptt', 'audio']);
 const DIRECT_JID_PATTERN = /@(c\.us|lid|g\.us|s\.whatsapp\.net)$/i;
 
 const state = {
@@ -62,7 +63,8 @@ function shouldForwardInbound(msg) {
   if (!isDirectChatJid(msg.from || '')) return [false, 'not-direct-chat'];
   if (!SUPPORTED_INBOUND_TYPES.has(msg.type)) return [false, 'unsupported-type'];
   if (!isAllowedSender(msg.from || '')) return [false, 'sender-not-allowed'];
-  if (!sanitizeText(msg.body || '')) return [false, 'empty-body'];
+  if (AUDIO_INBOUND_TYPES.has(msg.type) && !msg.hasMedia) return [false, 'audio-without-media'];
+  if (msg.type === 'chat' && !sanitizeText(msg.body || '')) return [false, 'empty-body'];
   return [true, null];
 }
 
@@ -70,8 +72,13 @@ async function postToBackend(payload) {
   const backendUrl = process.env.WHATSAPP_BACKEND_WEBHOOK_URL;
   if (!backendUrl) throw new Error('WHATSAPP_BACKEND_WEBHOOK_URL is not configured');
 
+  const timeout = AUDIO_INBOUND_TYPES.has(payload.type)
+    ? Number(process.env.WHATSAPP_AUDIO_TIMEOUT_MS || 180000)
+    : Number(process.env.WHATSAPP_BACKEND_TIMEOUT_MS || 10000);
+
   return axios.post(backendUrl, payload, {
-    timeout: Number(process.env.WHATSAPP_BACKEND_TIMEOUT_MS || 10000),
+    timeout,
+    maxBodyLength: Number(process.env.WHATSAPP_MAX_AUDIO_BYTES || 10485760) * 1.5,
     headers: process.env.WHATSAPP_WEBHOOK_SECRET
       ? { 'x-webhook-secret': process.env.WHATSAPP_WEBHOOK_SECRET }
       : {}
@@ -89,6 +96,26 @@ function buildInboundPayload(msg, options = {}) {
     timestamp: msg.timestamp,
     id: msg.id?._serialized || String(Date.now())
   };
+}
+
+async function attachAudioMedia(payload, msg) {
+  if (!AUDIO_INBOUND_TYPES.has(msg.type)) return payload;
+
+  const media = await msg.downloadMedia();
+  if (!media?.data || !media?.mimetype) throw new Error('audio-download-failed');
+
+  const sizeBytes = Buffer.byteLength(media.data, 'base64');
+  const maxBytes = Number(process.env.WHATSAPP_MAX_AUDIO_BYTES || 10485760);
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0) throw new Error('invalid-audio-size-limit');
+  if (sizeBytes > maxBytes) throw new Error('audio-too-large');
+
+  payload.media = {
+    data: media.data,
+    mimetype: media.mimetype,
+    filename: media.filename || null,
+    sizeBytes
+  };
+  return payload;
 }
 
 function initWhatsApp() {
@@ -169,9 +196,10 @@ function initWhatsApp() {
       return;
     }
 
-    const payload = buildInboundPayload(msg);
+    let payload = buildInboundPayload(msg);
 
     try {
+      payload = await attachAudioMedia(payload, msg);
       const response = await postToBackend(payload);
       const replyMessage = autoReplyEnabled && typeof response?.data?.message === 'string'
         ? response.data.message.trim()
@@ -201,7 +229,7 @@ function initWhatsApp() {
   client.on('message_create', async (msg) => {
     if (!msg.fromMe) return;
     if (!isDirectChatJid(msg.to || msg.from || '')) return;
-    if (!SUPPORTED_INBOUND_TYPES.has(msg.type)) return;
+    if (msg.type !== 'chat') return;
 
     const payload = buildInboundPayload(msg, { fromMe: true });
     try {

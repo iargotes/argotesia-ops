@@ -16,7 +16,7 @@ El sistema debe:
 
 - Recibir mensajes entrantes desde WhatsApp.
 - Guardar el payload original.
-- Normalizar mensajes de texto.
+- Normalizar mensajes de texto y transcribir notas de voz permitidas.
 - Clasificar proyecto, tipo y prioridad.
 - Notificar a Oscar por Telegram.
 - Crear el ticket interno en `https://ops.argotes.com` usando el contrato de intake.
@@ -51,6 +51,7 @@ MVP tecnico inicial creado:
 - Normalizacion del payload WhatsApp de referencia.
 - Persistencia con SQLAlchemy.
 - Clasificacion mock.
+- Transcripcion local opcional con Faster Whisper en CPU.
 - Notificacion Telegram opcional.
 - Docker Compose con PostgreSQL.
 - Pruebas basicas.
@@ -141,6 +142,28 @@ Reglas:
 - Para `@c.us`, se puede usar el numero o el JID completo.
 - Para `@lid`, conviene usar el identificador exacto que llegue desde WhatsApp.
 - Los mensajes ignorados no crean incidencia y no responden al cliente.
+
+## Transcripcion local de audios
+
+El conector acepta `ptt` y `audio` de remitentes autorizados. FastAPI transcribe cada
+archivo localmente y de forma secuencial; el binario temporal se elimina al terminar y
+solo se envia texto y metadata a ArgotesIA Ops.
+
+Configuracion ligera recomendada para el VPS:
+
+```env
+WHISPER_ENABLED=true
+WHISPER_MODEL=tiny
+WHISPER_LANGUAGE=es
+WHISPER_COMPUTE_TYPE=int8
+WHISPER_MAX_AUDIO_BYTES=10485760
+WHISPER_MAX_AUDIO_SECONDS=300
+WHATSAPP_MAX_AUDIO_BYTES=10485760
+WHATSAPP_AUDIO_TIMEOUT_MS=180000
+```
+
+El host necesita `ffprobe` para rechazar notas de voz demasiado largas antes de cargar
+Whisper. La primera carga descarga el modelo configurado al cache local del usuario.
 
 ## Pruebas
 

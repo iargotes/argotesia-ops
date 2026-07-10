@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     ops_assigned_worker_key: str | None = Field(default=None, alias="OPS_ASSIGNED_WORKER_KEY")
     ops_create_ticket: bool = Field(default=True, alias="OPS_CREATE_TICKET")
     ops_timeout_seconds: float = Field(default=10.0, alias="OPS_TIMEOUT_SECONDS")
+    whisper_enabled: bool = Field(default=False, alias="WHISPER_ENABLED")
+    whisper_model: str = Field(default="tiny", alias="WHISPER_MODEL")
+    whisper_language: str = Field(default="es", alias="WHISPER_LANGUAGE")
+    whisper_compute_type: str = Field(default="int8", alias="WHISPER_COMPUTE_TYPE")
+    whisper_max_audio_bytes: int = Field(default=10_485_760, alias="WHISPER_MAX_AUDIO_BYTES")
+    whisper_max_audio_seconds: int = Field(default=300, alias="WHISPER_MAX_AUDIO_SECONDS")
+    whisper_ffprobe_binary: str = Field(default="ffprobe", alias="WHISPER_FFPROBE_BINARY")
     llm_provider: str = Field(default="mock", alias="LLM_PROVIDER")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
